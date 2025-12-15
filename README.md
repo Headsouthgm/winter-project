@@ -17,7 +17,7 @@ Plan for 8 week project
 
 ### Week 2: Research & Requirements Gathering
 **Objectives:**
-- Learn how to build my own LLM and get what is needed  
+- Learn how to build my own LLM and get what is needed (dataset)
 - Decide the scope of the question like what is the purpose of this LLM 
 - Use chatbot available now for reference
 
