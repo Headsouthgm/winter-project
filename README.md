@@ -6,7 +6,7 @@ Plan for 8 week project
 - Decide the topic and scope
 - Research existing security chatbot solutions
 - Set up development environment
-- 
+  
 **Deliverables:**
 - Project scope document
 - Initial timeline with milestones
