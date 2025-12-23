@@ -1,0 +1,16 @@
+# Security Chatbot - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+
+# Google AI Development Kit
+google-adk==0.1.0
+google-genai==0.2.0
+
+# Async Support
+asyncio
+
+# Environment Variables
+python-dotenv==1.0.0

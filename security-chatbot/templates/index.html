@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Chatbot - AI Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            height: 90vh;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: #f7f9fc;
+            border-right: 1px solid #e1e8ed;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .agent-status {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .agent-status h3 {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .agent-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .agent-item .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+            margin-right: 8px;
+        }
+
+        .tools-section {
+            margin-top: 20px;
+        }
+
+        .tool-button {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            background: white;
+            border: 2px solid #667eea;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .tool-button:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4caf50;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            background: #f7f9fc;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 15px 20px;
+            border-radius: 18px;
+            position: relative;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.bot .message-content {
+            background: white;
+            color: #333;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .message-meta {
+            font-size: 11px;
+            margin-top: 5px;
+            opacity: 0.7;
+        }
+
+        .query-type-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            background: rgba(102, 126, 234, 0.2);
+            font-size: 10px;
+            margin-top: 5px;
+        }
+
+        .chat-input-container {
+            padding: 20px 30px;
+            background: white;
+            border-top: 1px solid #e1e8ed;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e1e8ed;
+            border-radius: 25px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .chat-input:focus {
+            border-color: #667eea;
+        }
+
+        .send-button {
+            width: 50px;
+            height: 50px;
+            border: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            transition: transform 0.2s;
+        }
+
+        .send-button:hover {
+            transform: scale(1.1);
+        }
+
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 15px 20px;
+            background: white;
+            border-radius: 18px;
+            width: fit-content;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .typing-indicator.active {
+            display: block;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 5px;
+        }
+
+        .typing-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #667eea;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+
+        .welcome-message {
+            text-align: center;
+            padding: 50px 20px;
+            color: #666;
+        }
+
+        .welcome-message h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+
+        .quick-action {
+            padding: 10px 20px;
+            background: white;
+            border: 2px solid #667eea;
+            color: #667eea;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .quick-action:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .clear-button {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid white;
+            color: white;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        .clear-button:hover {
+            background: white;
+            color: #667eea;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .modal-content h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .modal-button.primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .modal-button.secondary {
+            background: #e1e8ed;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            
+            .message-content {
+                max-width: 85%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h2>🛡️ Security Bot</h2>
+            
+            <div class="agent-status">
+                <h3>Active Agents</h3>
+                <div class="agent-item">
+                    <span class="dot"></span>
+                    Conversational Interface
+                </div>
+                <div class="agent-item">
+                    <span class="dot"></span>
+                    Security Knowledge
+                </div>
+                <div class="agent-item">
+                    <span class="dot"></span>
+                    Risk Assessment
+                </div>
+                <div class="agent-item">
+                    <span class="dot"></span>
+                    Tool Orchestration
+                </div>
+                <div class="agent-item">
+                    <span class="dot"></span>
+                    Report Generation
+                </div>
+                <div class="agent-item">
+                    <span class="dot"></span>
+                    Learning & Improvement
+                </div>
+            </div>
+
+            <div class="tools-section">
+                <h3 style="margin-bottom: 10px; color: #666;">Quick Tools</h3>
+                <button class="tool-button" onclick="openUrlScanner()">🔍 Scan URL</button>
+                <button class="tool-button" onclick="openPasswordChecker()">🔐 Check Password</button>
+                <button class="tool-button" onclick="openRiskAnalyzer()">⚠️ Risk Analysis</button>
+            </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="chat-container">
+            <div class="chat-header">
+                <h1>Security Assistant</h1>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <div class="status-indicator">
+                        <span class="status-dot"></span>
+                        Online
+                    </div>
+                    <button class="clear-button" onclick="clearChat()">Clear Chat</button>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="welcome-message">
+                    <h2>👋 Welcome to Security Assistant</h2>
+                    <p>I'm here to help you with cybersecurity questions and concerns.</p>
+                    <p>Ask me about security best practices, risk assessments, or scan URLs and files!</p>
+                    
+                    <div class="quick-actions">
+                        <button class="quick-action" onclick="sendQuickMessage('What is two-factor authentication?')">
+                            What is 2FA?
+                        </button>
+                        <button class="quick-action" onclick="sendQuickMessage('How do I create a strong password?')">
+                            Strong Passwords
+                        </button>
+                        <button class="quick-action" onclick="sendQuickMessage('What is phishing?')">
+                            About Phishing
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <input 
+                        type="text" 
+                        class="chat-input" 
+                        id="messageInput" 
+                        placeholder="Ask me anything about security..."
+                        onkeypress="handleKeyPress(event)"
+                    >
+                    <button class="send-button" id="sendButton" onclick="sendMessage()">➤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- URL Scanner Modal -->
+    <div class="modal" id="urlModal">
+        <div class="modal-content">
+            <h2>🔍 URL Security Scanner</h2>
+            <input type="text" class="modal-input" id="urlInput" placeholder="Enter URL to scan (e.g., https://example.com)">
+            <div class="modal-buttons">
+                <button class="modal-button primary" onclick="scanUrl()">Scan URL</button>
+                <button class="modal-button secondary" onclick="closeModal('urlModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Checker Modal -->
+    <div class="modal" id="passwordModal">
+        <div class="modal-content">
+            <h2>🔐 Password Breach Checker</h2>
+            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+                Note: For security, we only check password hashes, not actual passwords.
+            </p>
+            <input type="password" class="modal-input" id="passwordInput" placeholder="Enter password to check">
+            <div class="modal-buttons">
+                <button class="modal-button primary" onclick="checkPassword()">Check Password</button>
+                <button class="modal-button secondary" onclick="closeModal('passwordModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Risk Analyzer Modal -->
+    <div class="modal" id="riskModal">
+        <div class="modal-content">
+            <h2>⚠️ Security Risk Analyzer</h2>
+            <textarea class="modal-input" id="riskInput" placeholder="Describe what you're planning to do...
+Example: I want to email our customer database to my personal Gmail" rows="5"></textarea>
+            <div class="modal-buttons">
+                <button class="modal-button primary" onclick="analyzeRisk()">Analyze Risk</button>
+                <button class="modal-button secondary" onclick="closeModal('riskModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let isTyping = false;
+
+        // Send message on Enter key
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        // Send message function
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message || isTyping) return;
+            
+            // Clear input
+            input.value = '';
+            
+            // Add user message to chat
+            addMessage('user', message);
+            
+            // Show typing indicator
+            showTyping();
+            
+            try {
+                // Send to backend
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                const data = await response.json();
+                
+                // Hide typing indicator
+                hideTyping();
+                
+                // Add bot response
+                if (data.error) {
+                    addMessage('bot', `Error: ${data.error}`);
+                } else {
+                    addMessage('bot', data.response, data.query_type);
+                }
+            } catch (error) {
+                hideTyping();
+                addMessage('bot', 'Sorry, I encountered an error. Please try again.');
+                console.error('Error:', error);
+            }
+        }
+
+        // Add message to chat
+        function addMessage(sender, text, queryType = null) {
+            const messagesContainer = document.getElementById('chatMessages');
+            const welcomeMessage = messagesContainer.querySelector('.welcome-message');
+            
+            // Remove welcome message if exists
+            if (welcomeMessage) {
+                welcomeMessage.remove();
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            
+            let queryBadge = '';
+            if (queryType) {
+                queryBadge = `<div class="query-type-badge">📊 ${queryType.replace('_', ' ')}</div>`;
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    ${text}
+                    ${queryBadge}
+                    <div class="message-meta">${now}</div>
+                </div>
+            `;
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Show typing indicator
+        function showTyping() {
+            isTyping = true;
+            const messagesContainer = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message bot';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = `
+                <div class="typing-indicator active">
+                    <div class="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            `;
+            messagesContainer.appendChild(typingDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            document.getElementById('sendButton').disabled = true;
+        }
+
+        // Hide typing indicator
+        function hideTyping() {
+            isTyping = false;
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+            document.getElementById('sendButton').disabled = false;
+        }
+
+        // Quick message function
+        function sendQuickMessage(message) {
+            document.getElementById('messageInput').value = message;
+            sendMessage();
+        }
+
+        // Clear chat
+        async function clearChat() {
+            if (confirm('Are you sure you want to clear the chat history?')) {
+                const messagesContainer = document.getElementById('chatMessages');
+                messagesContainer.innerHTML = `
+                    <div class="welcome-message">
+                        <h2>👋 Chat Cleared</h2>
+                        <p>Start a new conversation!</p>
+                    </div>
+                `;
+                
+                // Clear session on backend
+                await fetch('/api/clear-session', { method: 'POST' });
+            }
+        }
+
+        // Modal functions
+        function openUrlScanner() {
+            document.getElementById('urlModal').classList.add('active');
+        }
+
+        function openPasswordChecker() {
+            document.getElementById('passwordModal').classList.add('active');
+        }
+
+        function openRiskAnalyzer() {
+            document.getElementById('riskModal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // Scan URL
+        async function scanUrl() {
+            const url = document.getElementById('urlInput').value.trim();
+            if (!url) return;
+            
+            closeModal('urlModal');
+            addMessage('user', `Scan this URL: ${url}`);
+            showTyping();
+            
+            try {
+                const response = await fetch('/api/scan-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+                
+                const data = await response.json();
+                hideTyping();
+                
+                const result = data.scan_result;
+                const message = `🔍 URL Scan Results:\n\n` +
+                    `URL: ${url}\n` +
+                    `Safe Browsing: ${result.safe_browsing}\n` +
+                    `VirusTotal: ${result.virustotal}\n` +
+                    `PhishTank: ${result.phishtank}\n\n` +
+                    `✅ This URL appears to be safe based on available checks.`;
+                
+                addMessage('bot', message, 'url_scan');
+            } catch (error) {
+                hideTyping();
+                addMessage('bot', 'Error scanning URL. Please try again.');
+            }
+            
+            document.getElementById('urlInput').value = '';
+        }
+
+        // Check password
+        async function checkPassword() {
+            const password = document.getElementById('passwordInput').value;
+            if (!password) return;
+            
+            closeModal('passwordModal');
+            addMessage('user', 'Check my password for breaches');
+            showTyping();
+            
+            // Simple hash (in production, use proper hashing)
+            const hash = btoa(password).substring(0, 20);
+            
+            try {
+                const response = await fetch('/api/check-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password_hash: hash })
+                });
+                
+                const data = await response.json();
+                hideTyping();
+                
+                const result = data.breach_check;
+                const message = result.breached
+                    ? `⚠️ This password has been found in ${result.breach_count} data breaches! Please change it immediately.`
+                    : `✅ Good news! This password hasn't been found in any known breaches.`;
+                
+                addMessage('bot', message, 'password_check');
+            } catch (error) {
+                hideTyping();
+                addMessage('bot', 'Error checking password. Please try again.');
+            }
+            
+            document.getElementById('passwordInput').value = '';
+        }
+
+        // Analyze risk
+        async function analyzeRisk() {
+            const scenario = document.getElementById('riskInput').value.trim();
+            if (!scenario) return;
+            
+            closeModal('riskModal');
+            addMessage('user', `Analyze this scenario: ${scenario}`);
+            showTyping();
+            
+            try {
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scenario: scenario })
+                });
+                
+                const data = await response.json();
+                hideTyping();
+                
+                addMessage('bot', data.report, 'risk_assessment');
+            } catch (error) {
+                hideTyping();
+                addMessage('bot', 'Error analyzing risk. Please try again.');
+            }
+            
+            document.getElementById('riskInput').value = '';
+        }
+
+        // Check system status on load
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                console.log('System Status:', data);
+            } catch (error) {
+                console.error('Failed to check status:', error);
+            }
+        }
+
+        // Initialize
+        window.onload = function() {
+            checkStatus();
+            document.getElementById('messageInput').focus();
+        };
+    </script>
+</body>
+</html>
