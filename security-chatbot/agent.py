@@ -31,7 +31,7 @@ class SecurityConfig:
     retry_exp_base: int = 7
     retry_initial_delay: int = 1
     user_id: str = "default_user"
-    app_name: str = "security-chatbot"
+    app_name: str = "security_chatbot"
     virustotal_api_key: Optional[str] = None
     google_safe_browsing_key: Optional[str] = None
     hibp_api_key: Optional[str] = None
