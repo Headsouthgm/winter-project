@@ -251,7 +251,8 @@ class SecurityChatbotSystem:
         if not self.model:
             raise Exception("Model not initialized. Check API keys.")
         
-        main_agent = LlmAgent(
+        main_agent = Agent(
+            name="security_chatbot",
             model=self.model,
             system_instruction="""You are a security expert chatbot assistant.
             Your role is to help users understand security concepts, assess risks,
