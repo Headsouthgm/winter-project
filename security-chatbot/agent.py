@@ -373,9 +373,10 @@ def create_root_agent():
     if not setup_api_keys():
         print("⚠️ Warning: API keys not configured")
         try:
-            return LlmAgent(
+            return Agent(
+                name="security_chatbot",
                 model=Gemini(model_name="gemini-2.0-flash-exp"),
-                system_instruction="⚠️ Error: GOOGLE_API_KEY not configured. Please set your API key."
+                instruction="⚠️ Error: GOOGLE_API_KEY not configured. Please set your API key."
             )
         except:
             return None
@@ -383,9 +384,11 @@ def create_root_agent():
     system = SecurityChatbotSystem(config)
     system.setup_session_service(use_database=False)
     
-    main_agent = LlmAgent(
+    # Use Agent instead of LlmAgent, with correct parameters
+    main_agent = Agent(
+        name="security_chatbot",
         model=system.model,
-        system_instruction="""You are a Security Expert Chatbot Assistant specializing in cybersecurity.
+        instruction="""You are a Security Expert Chatbot Assistant specializing in cybersecurity.
 
 Your Capabilities:
 - Answer questions about security concepts (passwords, encryption, 2FA, VPNs, etc.)
