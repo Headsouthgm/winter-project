@@ -17,9 +17,10 @@ Plan for 8 week project
 
 ### Week 2: Research & Requirements Gathering
 **Objectives:**
-- Learn how to build my own Ai agent and identify the key feature of AI chatbot. (memory)
-- Figure out conversation flows
-- Use chatbot available now for reference
+- Learned Google ADK framework and agent development
+- Identified key features: Multi-agent routing, context memory, specialized responses
+- Studied conversation flows and query classification
+- Referenced existing security tools
 
 **Deliverables:**
 - Research summary presentation (~10 min)
@@ -32,7 +33,7 @@ Plan for 8 week project
 **Objectives:**
 - Build first working prototype
 - Implement basic conversation management
-- Set up database for chat history
+- Add basic learning from mistake system
 
 **Deliverables:**
 - Prototype presentation (~10 min)
@@ -48,14 +49,13 @@ Plan for 8 week project
 ### Week 4: Design/Prototype Refinement
 **Objectives:**
 - Build responsive chat interface
-- Implement messaging and history view
+- Implement actual tools like virustotal
 - Improve response quality
 
 **Deliverables:**
 - Refined prototype presentation (~10 min)
 - Working web interface
-- Chat window with message input
-- Conversation history panel
+- Improve response formatting and visualization
 
 ---
 
@@ -69,6 +69,10 @@ Plan for 8 week project
 **Deliverables:**
 - Mid-project presentation (~10 min)
 - Progress summary and current capabilities demo
+- Performance metrics:
+  - Average response time
+  - API success rates
+  - User query classifications breakdown
 - Updated project timeline
 - Action plan for weeks 6-8
 
@@ -78,12 +82,12 @@ Plan for 8 week project
 **Objectives:**
 - Implement user feedback mechanisms
 - Add conversation management 
-- Improve error handling and loading states
+- Enhance error handling with user-friendly messages
 
 **Deliverables:**
 - Implementation presentation (~10 min)
 - GitHub commit history summary
-- Error handling documentation
+- Enhance error handling with user-friendly messages
 - New features demo
 ---
 

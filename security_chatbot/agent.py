@@ -16,14 +16,14 @@ except ImportError as e:
     print(f"⚠️  ADK not installed. Run: pip install google-adk")
     print(f"Error details: {e}")
 
-
+#  Define security risk levels Use: Classify how dangerous a security scenario is
 class RiskLevel(Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
-
+#  Store all configuration settings
 @dataclass
 class SecurityConfig:
     model_name: str = "gemini-2.0-flash-exp"
@@ -39,6 +39,7 @@ class SecurityConfig:
 
 config = SecurityConfig()
 
+# retry API calls when it is busy or has an error
 retry_config = types.HttpRetryOptions(
     attempts=config.max_retry_attempts,
     exp_base=config.retry_exp_base,
@@ -46,7 +47,7 @@ retry_config = types.HttpRetryOptions(
     http_status_codes=[429, 500, 503, 504],
 )
 
-
+# check for Google API key
 def setup_api_keys():
     try:
         from kaggle_secrets import UserSecretsClient
@@ -62,7 +63,7 @@ def setup_api_keys():
             return False
     return True
 
-
+# Decides which specialist agent should handle the query
 class ConversationalAgent:
     def __init__(self, model: Gemini):
         self.model = model
@@ -70,7 +71,7 @@ class ConversationalAgent:
     
     def classify_query(self, user_input: str) -> str:
         user_input_lower = user_input.lower()
-        
+        # Looks for keywords (scan, url, password, risk) and reach different tools
         if any(word in user_input_lower for word in ['scan', 'check file', 'virus', 'malware']):
             return "file_scan"
         elif any(word in user_input_lower for word in ['link', 'url', 'website', 'phishing']):
@@ -92,7 +93,7 @@ class ConversationalAgent:
         }
         return routing_map.get(query_type, "Security Knowledge Agent")
 
-
+# pre-define knowledge(change to a dataset if possible)
 class SecurityKnowledgeAgent:
     def __init__(self, model: Gemini):
         self.model = model
@@ -112,7 +113,7 @@ class SecurityKnowledgeAgent:
             "related_concepts": ["Authentication", "Authorization", "Encryption"]
         }
 
-
+# Evaluates security risks in user scenarios
 class RiskAssessmentAgent:
     def __init__(self, model: Gemini):
         self.model = model
@@ -141,7 +142,7 @@ class RiskAssessmentAgent:
             "recommendations": ["Use secure file sharing", "Enable encryption"]
         }
 
-
+# Calls external security APIs( need to change into real APIs)
 class ToolOrchestrationAgent:
     def __init__(self, config: SecurityConfig):
         self.config = config
@@ -168,7 +169,7 @@ class ToolOrchestrationAgent:
             "breach_count": 0
         }
 
-
+# Formats findings into readable reports
 class ReportGenerationAgent:
     def __init__(self):
         self.name = "Report Generation"
@@ -190,7 +191,7 @@ Recommendations:
         """
         return report
 
-
+# Learns from user feedback
 class LearningAgent:
     def __init__(self):
         self.name = "Learning & Improvement"
@@ -214,7 +215,7 @@ class LearningAgent:
             "insights": ["System performing well"]
         }
 
-
+# Creates and manages all 6 specialist agents
 class SecurityChatbotSystem:
     def __init__(self, config: SecurityConfig):
         self.config = config
@@ -237,6 +238,7 @@ class SecurityChatbotSystem:
         
         print("✅ All agents initialized successfully.")
     
+    # Choose how to store conversation history
     def setup_session_service(self, use_database: bool = False):
         if use_database:
             self.session_service = DatabaseSessionService(
@@ -247,6 +249,7 @@ class SecurityChatbotSystem:
             self.session_service = InMemorySessionService()
             print("✅ In-memory session service configured.")
     
+    # Creates the ADK application 
     def create_app(self) -> App:
         if not self.model:
             raise Exception("Model not initialized. Check API keys.")
@@ -266,7 +269,13 @@ class SecurityChatbotSystem:
         
         print(f"✅ App created: {self.config.app_name}")
         return app
-    
+    # Main flow:
+    # 1. User sends message
+    # 2. Conversational agent classifies it
+    # 3. Routes to appropriate specialist
+    # 4. Specialist processes it
+    # 5. Report agent formats the response
+    # 6. Returns to user
     def process_query(self, user_input: str) -> str:
         if not self.conversational_agent:
             return "Error: System not properly initialized."
@@ -289,7 +298,7 @@ class SecurityChatbotSystem:
             advice = self.knowledge_agent.get_security_advice(user_input)
             return str(advice)
 
-
+# Manages conversation sessions asynchronously
 async def run_session(
     runner_instance: Runner,
     session_service: Any,
@@ -338,7 +347,7 @@ async def run_session(
     else:
         print("No queries provided!")
 
-
+# Testing the system without the web UI
 def main():
     print("=" * 70)
     print("SECURITY CHATBOT - AI AGENT SYSTEM")
@@ -367,6 +376,7 @@ def main():
         print(f"💬 Response:\n{response}")
         print("-" * 70)
 
+# ADK Web UI
 
 def create_root_agent():
     print("\n🌐 Creating root agent for ADK Web UI...")
@@ -427,6 +437,6 @@ Remember: Security is about balancing protection with usability. Help users make
 
 root_agent = create_root_agent()
 
-
+# Exposes agent to ADK Web
 if __name__ == "__main__":
     main()
