@@ -1,7 +1,12 @@
 import os
+import requests
+import base64
+import hashlib
+import time
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
+
 
 try:
     from google.adk.agents import Agent, LlmAgent
@@ -47,8 +52,9 @@ retry_config = types.HttpRetryOptions(
     http_status_codes=[429, 500, 503, 504],
 )
 
-# check for Google API key
+# check for Google API key and VirusTotal API key
 def setup_api_keys():
+    # Check for Google API key
     try:
         from kaggle_secrets import UserSecretsClient
         GOOGLE_API_KEY = UserSecretsClient().get_secret("GOOGLE_API_KEY")
@@ -61,6 +67,15 @@ def setup_api_keys():
             print("🔑 WARNING: GOOGLE_API_KEY not found!")
             print("Please set it using: export GOOGLE_API_KEY='your_key_here'")
             return False
+    
+    # Check for VirusTotal API key
+    if "VIRUSTOTAL_API_KEY" in os.environ:
+        config.virustotal_api_key = os.environ["VIRUSTOTAL_API_KEY"]
+        print("✅ VirusTotal API key found in environment.")
+    else:
+        print("⚠️  VirusTotal API key not found. URL/file scanning will be limited.")
+        print("Set it with: export VIRUSTOTAL_API_KEY='your_key_here'")
+    
     return True
 
 # Decides which specialist agent should handle the query
@@ -142,31 +157,159 @@ class RiskAssessmentAgent:
             "recommendations": ["Use secure file sharing", "Enable encryption"]
         }
 
-# Calls external security APIs( need to change into real APIs)
+# Calls external security APIs with REAL VirusTotal integration
 class ToolOrchestrationAgent:
     def __init__(self, config: SecurityConfig):
         self.config = config
         self.name = "Tool Orchestration"
+        self.virustotal_base_url = "https://www.virustotal.com/api/v3"
     
     def scan_file(self, file_hash: str) -> Dict[str, Any]:
-        return {
-            "tool": "VirusTotal",
-            "status": "clean",
-            "detections": 0,
-            "total_scans": 70
-        }
+        """Scan file using VirusTotal API"""
+        api_key = self.config.virustotal_api_key
+        
+        if not api_key:
+            return {
+                "error": "VirusTotal API key not configured",
+                "tool": "VirusTotal",
+                "status": "unavailable"
+            }
+        
+        try:
+            headers = {"x-apikey": api_key}
+            response = requests.get(
+                f"{self.virustotal_base_url}/files/{file_hash}",
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                stats = data['data']['attributes']['last_analysis_stats']
+                
+                return {
+                    "tool": "VirusTotal",
+                    "status": "malicious" if stats['malicious'] > 0 else "clean",
+                    "detections": stats['malicious'],
+                    "total_scans": sum(stats.values()),
+                    "suspicious": stats.get('suspicious', 0),
+                    "undetected": stats.get('undetected', 0),
+                    "harmless": stats.get('harmless', 0)
+                }
+            elif response.status_code == 404:
+                return {
+                    "tool": "VirusTotal",
+                    "status": "not_found",
+                    "message": "File not found in VirusTotal database"
+                }
+            else:
+                return {
+                    "tool": "VirusTotal",
+                    "status": "error",
+                    "message": f"API error: {response.status_code}"
+                }
+                
+        except requests.exceptions.RequestException as e:
+            return {
+                "tool": "VirusTotal",
+                "status": "error",
+                "message": f"Request failed: {str(e)}"
+            }
     
     def check_url(self, url: str) -> Dict[str, Any]:
-        return {
-            "safe_browsing": "safe",
-            "virustotal": "clean",
-            "phishtank": "not_found"
-        }
+        """Check URL using VirusTotal API"""
+        api_key = self.config.virustotal_api_key
+        
+        if not api_key:
+            return {
+                "error": "VirusTotal API key not configured",
+                "virustotal": "unavailable"
+            }
+        
+        try:
+            # Generate URL ID for VirusTotal
+            url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
+            
+            # Try to get existing analysis
+            response = requests.get(
+                f"{self.virustotal_base_url}/urls/{url_id}",
+                headers={"x-apikey": api_key},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                stats = data['data']['attributes']['last_analysis_stats']
+                
+                is_malicious = stats.get('malicious', 0) > 0
+                is_suspicious = stats.get('suspicious', 0) > 0
+                
+                return {
+                    "url": url,
+                    "virustotal": "malicious" if is_malicious else ("suspicious" if is_suspicious else "clean"),
+                    "detections": stats.get('malicious', 0),
+                    "total_scans": sum(stats.values()),
+                    "suspicious": stats.get('suspicious', 0),
+                    "harmless": stats.get('harmless', 0),
+                    "undetected": stats.get('undetected', 0)
+                }
+            
+            elif response.status_code == 404:
+                # URL not in database, submit for scanning
+                return self._submit_url_for_scan(url, api_key)
+            
+            else:
+                return {
+                    "virustotal": "error",
+                    "message": f"API error: {response.status_code}"
+                }
+                
+        except requests.exceptions.RequestException as e:
+            return {
+                "virustotal": "error",
+                "message": f"Request failed: {str(e)}"
+            }
+    
+    def _submit_url_for_scan(self, url: str, api_key: str) -> Dict[str, Any]:
+        """Submit URL to VirusTotal for scanning"""
+        try:
+            headers = {
+                "x-apikey": api_key,
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+            
+            response = requests.post(
+                f"{self.virustotal_base_url}/urls",
+                headers=headers,
+                data={"url": url},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                return {
+                    "url": url,
+                    "virustotal": "scanning",
+                    "message": "URL submitted for scanning. Check back in a few moments.",
+                    "scan_id": response.json()['data']['id']
+                }
+            else:
+                return {
+                    "virustotal": "error",
+                    "message": f"Failed to submit URL: {response.status_code}"
+                }
+                
+        except requests.exceptions.RequestException as e:
+            return {
+                "virustotal": "error",
+                "message": f"Submission failed: {str(e)}"
+            }
     
     def check_password_breach(self, password_hash: str) -> Dict[str, Any]:
+        """Check password using Have I Been Pwned API (placeholder for now)"""
         return {
             "breached": False,
-            "breach_count": 0
+            "breach_count": 0,
+            "message": "Password breach checking - coming in Week 3"
         }
 
 # Formats findings into readable reports
@@ -175,6 +318,12 @@ class ReportGenerationAgent:
         self.name = "Report Generation"
     
     def generate_security_report(self, findings: Dict[str, Any]) -> str:
+        recommendations = findings.get('recommendations', ['Continue monitoring'])
+        if isinstance(recommendations, list):
+            rec_text = '\n'.join(f"- {rec}" for rec in recommendations)
+        else:
+            rec_text = str(recommendations)
+            
         report = f"""
 === SECURITY SCAN REPORT ===
 
@@ -187,7 +336,7 @@ Detailed Findings:
 {findings.get('details', 'No issues detected')}
 
 Recommendations:
-{', '.join(findings.get('recommendations', ['Continue monitoring']))}
+{rec_text}
         """
         return report
 
@@ -238,7 +387,6 @@ class SecurityChatbotSystem:
         
         print("✅ All agents initialized successfully.")
     
-    # Choose how to store conversation history
     def setup_session_service(self, use_database: bool = False):
         if use_database:
             self.session_service = DatabaseSessionService(
@@ -249,7 +397,6 @@ class SecurityChatbotSystem:
             self.session_service = InMemorySessionService()
             print("✅ In-memory session service configured.")
     
-    # Creates the ADK application 
     def create_app(self) -> App:
         if not self.model:
             raise Exception("Model not initialized. Check API keys.")
@@ -257,7 +404,7 @@ class SecurityChatbotSystem:
         main_agent = Agent(
             name="security_chatbot",
             model=self.model,
-            system_instruction="""You are a security expert chatbot assistant.
+            instruction="""You are a security expert chatbot assistant.
             Your role is to help users understand security concepts, assess risks,
             and provide actionable security advice. Be clear, concise, and helpful."""
         )
@@ -269,13 +416,7 @@ class SecurityChatbotSystem:
         
         print(f"✅ App created: {self.config.app_name}")
         return app
-    # Main flow:
-    # 1. User sends message
-    # 2. Conversational agent classifies it
-    # 3. Routes to appropriate specialist
-    # 4. Specialist processes it
-    # 5. Report agent formats the response
-    # 6. Returns to user
+    
     def process_query(self, user_input: str) -> str:
         if not self.conversational_agent:
             return "Error: System not properly initialized."
@@ -290,15 +431,84 @@ class SecurityChatbotSystem:
             result = self.risk_agent.assess_risk(user_input)
             return self.report_agent.generate_security_report(result)
         
-        elif query_type in ["file_scan", "url_scan", "password_check"]:
-            result = {"summary": "Tool scan completed", "risk_level": "LOW"}
-            return self.report_agent.generate_security_report(result)
+        elif query_type == "url_scan":
+            # Extract URL with improved handling
+            words = user_input.split()
+            url = None
+            for word in words:
+                word = word.strip('.,!?')
+                # If it has http/https, use it directly
+                if word.startswith('http://') or word.startswith('https://'):
+                    url = word
+                    break
+                # If it has a domain extension, add https://
+                elif '.' in word and any(ext in word for ext in ['.com', '.org', '.net', '.edu', '.gov', '.io', '.co', '.uk']):
+                    if len(word) > 4:
+                        url = f"https://{word}"
+                        break
+            
+            if url:
+                print(f"🔍 Scanning URL with VirusTotal: {url}")
+                scan_result = self.tool_agent.check_url(url)
+                
+                return self.report_agent.generate_security_report({
+                    "summary": f"URL scan completed for: {url}",
+                    "risk_level": scan_result.get('virustotal', 'UNKNOWN').upper(),
+                    "details": f"VirusTotal detections: {scan_result.get('detections', 0)}/{scan_result.get('total_scans', 0)}",
+                    "recommendations": self._get_url_recommendations(scan_result)
+                })
+            else:
+                return "Please provide a valid URL to scan. Example: Is https://example.com safe?"
+        
+        elif query_type == "file_scan":
+            return "File scanning requires a file hash. Please provide a SHA-256 hash to scan."
+        
+        elif query_type == "password_check":
+            return "Password breach checking - coming soon in Week 3!"
         
         else:
             advice = self.knowledge_agent.get_security_advice(user_input)
             return str(advice)
+    
+    def _get_url_recommendations(self, scan_result: Dict[str, Any]) -> List[str]:
+        """Generate recommendations based on URL scan results"""
+        status = scan_result.get('virustotal', 'unknown')
+        
+        if status == 'malicious':
+            return [
+                "⚠️ DO NOT visit this URL!",
+                "This URL has been flagged as malicious by multiple sources",
+                "Report this to your IT security team if received via email",
+                "Clear your browser cache if you already visited it"
+            ]
+        elif status == 'suspicious':
+            return [
+                "⚠️ Exercise extreme caution with this URL",
+                f"{scan_result.get('suspicious', 0)} scanners flagged it as suspicious",
+                "Verify the URL is from a legitimate trusted source",
+                "Consider using a sandbox environment if you must access it"
+            ]
+        elif status == 'clean':
+            return [
+                "✅ This URL appears safe based on current analysis",
+                "Still verify the domain matches what you expect",
+                "Use HTTPS connections when possible",
+                "Keep your browser and security software updated"
+            ]
+        elif status == 'scanning':
+            return [
+                "⏳ URL submitted for scanning",
+                "This URL was not previously scanned",
+                "Check back in a few moments for results",
+                "Exercise caution until results are available"
+            ]
+        else:
+            return [
+                "❌ Unable to complete scan",
+                "There may be an issue with the API or URL format",
+                "Try again or contact support if issue persists"
+            ]
 
-# Manages conversation sessions asynchronously
 async def run_session(
     runner_instance: Runner,
     session_service: Any,
@@ -347,7 +557,6 @@ async def run_session(
     else:
         print("No queries provided!")
 
-# Testing the system without the web UI
 def main():
     print("=" * 70)
     print("SECURITY CHATBOT - AI AGENT SYSTEM")
@@ -367,7 +576,7 @@ def main():
     test_queries = [
         "What is two-factor authentication?",
         "I want to share my password with a coworker",
-        "Is it safe to click this link: example.com"
+        "Is it safe to click this link: http://testphp.vulnweb.com/"
     ]
     
     for query in test_queries:
@@ -375,8 +584,6 @@ def main():
         response = system.process_query(query)
         print(f"💬 Response:\n{response}")
         print("-" * 70)
-
-# ADK Web UI
 
 def create_root_agent():
     print("\n🌐 Creating root agent for ADK Web UI...")
@@ -395,15 +602,15 @@ def create_root_agent():
     system = SecurityChatbotSystem(config)
     system.setup_session_service(use_database=False)
     
-    # Use Agent instead of LlmAgent, with correct parameters
     main_agent = Agent(
         name="security_chatbot",
         model=system.model,
-        instruction="""You are a Security Expert Chatbot Assistant specializing in cybersecurity.
+        instruction="""You are a Security Expert Chatbot Assistant with real-time threat detection capabilities.
 
 Your Capabilities:
 - Answer questions about security concepts (passwords, encryption, 2FA, VPNs, etc.)
 - Assess security risks in user scenarios
+- Scan URLs using VirusTotal API for malware and phishing detection
 - Provide best practices for data protection
 - Explain compliance requirements (GDPR, HIPAA, SOC2)
 - Guide users on secure coding practices
@@ -416,17 +623,24 @@ Your Approach:
 - Prioritize practical advice over theory
 - When assessing risks, explain both likelihood and impact
 - Always recommend the most secure option, but provide alternatives
+- For URL scans, provide detailed threat analysis from VirusTotal
 
 Security Topics You Cover:
 - Password management and authentication
 - Network security (firewalls, VPNs, zero-trust)
 - Data encryption and hashing
 - Phishing and social engineering
+- Malware detection and analysis
 - Secure software development
 - Cloud security (AWS, Azure, GCP)
 - Compliance and regulations
 - Incident response
 - Security awareness training
+
+Special Features:
+- Real-time URL scanning with VirusTotal
+- Multi-engine malware detection
+- Threat intelligence from 70+ security vendors
 
 Remember: Security is about balancing protection with usability. Help users make informed decisions!"""
     )
@@ -437,6 +651,5 @@ Remember: Security is about balancing protection with usability. Help users make
 
 root_agent = create_root_agent()
 
-# Exposes agent to ADK Web
 if __name__ == "__main__":
     main()
