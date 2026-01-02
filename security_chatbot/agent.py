@@ -31,7 +31,7 @@ class RiskLevel(Enum):
 #  Store all configuration settings
 @dataclass
 class SecurityConfig:
-    model_name: str = "gemini-2.0-flash-exp"
+    model_name: str = "gemini-2.5-flash"
     max_retry_attempts: int = 5
     retry_exp_base: int = 7
     retry_initial_delay: int = 1
@@ -304,13 +304,63 @@ class ToolOrchestrationAgent:
                 "message": f"Submission failed: {str(e)}"
             }
     
-    def check_password_breach(self, password_hash: str) -> Dict[str, Any]:
-        """Check password using Have I Been Pwned API (placeholder for now)"""
-        return {
-            "breached": False,
-            "breach_count": 0,
-            "message": "Password breach checking - coming in Week 3"
-        }
+    def check_password_breach(self, password: str) -> Dict[str, Any]:
+        """Check password using Have I Been Pwned API with k-Anonymity"""
+        try:
+            # Step 1: Hash the password with SHA-1
+            sha1_hash = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
+            
+            # Step 2: Split hash into prefix (first 5 chars) and suffix (rest)
+            prefix = sha1_hash[:5]
+            suffix = sha1_hash[5:]
+            
+            # Step 3: Query HIBP API with only the prefix (k-Anonymity)
+            response = requests.get(
+                f"https://api.pwnedpasswords.com/range/{prefix}",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                # Step 4: Check if our suffix appears in the results
+                hashes = response.text.split('\n')
+                
+                for line in hashes:
+                    if ':' in line:
+                        hash_suffix, count = line.split(':')
+                        if hash_suffix.strip() == suffix:
+                            breach_count = int(count.strip())
+                            return {
+                                "breached": True,
+                                "breach_count": breach_count,
+                                "tool": "Have I Been Pwned",
+                                "status": "breached",
+                                "message": f"⚠️ WARNING: This password has been exposed {breach_count:,} times in data breaches!",
+                                "recommendation": "Choose a different, unique password immediately"
+                            }
+                
+                # Password not found in breaches
+                return {
+                    "breached": False,
+                    "breach_count": 0,
+                    "tool": "Have I Been Pwned",
+                    "status": "safe",
+                    "message": "✅ Good news! This password has not been found in known data breaches.",
+                    "recommendation": "Still ensure it's unique and not used elsewhere"
+                }
+            
+            else:
+                return {
+                    "tool": "Have I Been Pwned",
+                    "status": "error",
+                    "message": f"API error: {response.status_code}"
+                }
+                
+        except requests.exceptions.RequestException as e:
+            return {
+                "tool": "Have I Been Pwned",
+                "status": "error",
+                "message": f"Request failed: {str(e)}"
+            }
 
 # Formats findings into readable reports
 class ReportGenerationAgent:
@@ -464,8 +514,31 @@ class SecurityChatbotSystem:
             return "File scanning requires a file hash. Please provide a SHA-256 hash to scan."
         
         elif query_type == "password_check":
-            return "Password breach checking - coming soon in Week 3!"
+            # Extract password from user input
+            words = user_input.split()
+            password = None
         
+            # Look for password after keywords
+            for i, word in enumerate(words):
+                if word.lower() in ['password', 'credential']:
+                    if i + 1 < len(words):
+                        # Get the word after "password" or "credential"
+                        password = words[i + 1].strip('.,!?"\'')
+                        break
+            
+            if password:
+                print(f"🔍 Checking password breach status with HIBP")
+                breach_result = self.tool_agent.check_password_breach(password)
+                
+                return self.report_agent.generate_security_report({
+                    "summary": f"Password breach check completed",
+                    "risk_level": "CRITICAL" if breach_result.get('breached') else "LOW",
+                    "details": breach_result.get('message', 'Check completed'),
+                    "recommendations": self._get_password_recommendations(breach_result)
+                })
+            else:
+                return "Please provide a password to check. Example: 'Check password Password123'"
+                
         else:
             advice = self.knowledge_agent.get_security_advice(user_input)
             return str(advice)
@@ -507,6 +580,27 @@ class SecurityChatbotSystem:
                 "❌ Unable to complete scan",
                 "There may be an issue with the API or URL format",
                 "Try again or contact support if issue persists"
+            ]
+    def _get_password_recommendations(self, breach_result: Dict[str, Any]) -> List[str]:
+        """Generate recommendations based on password breach results"""
+        if breach_result.get('breached'):
+            breach_count = breach_result.get('breach_count', 0)
+            return [
+                f"⚠️ CRITICAL: This password appeared {breach_count:,} times in data breaches!",
+                "🚫 DO NOT use this password anywhere",
+                "Change it immediately on all accounts where you use it",
+                "Use a unique, randomly generated password instead",
+                "Consider using a password manager (1Password, Bitwarden, LastPass)",
+                "Enable two-factor authentication (2FA) on all accounts"
+            ]
+        else:
+            return [
+                "✅ This password hasn't been found in known breaches",
+                "Still ensure it's unique and not used on multiple sites",
+                "Use a mix of uppercase, lowercase, numbers, and symbols",
+                "Make it at least 12-16 characters long",
+                "Consider using a password manager for strong, unique passwords",
+                "Enable 2FA for extra security"
             ]
 
 async def run_session(
@@ -577,6 +671,8 @@ def main():
         "What is two-factor authentication?",
         "I want to share my password with a coworker",
         "Is it safe to click this link: http://testphp.vulnweb.com/"
+        "Check password Password123",  # ← NEW TEST
+        "Check password MyUniqueP@ssw0rd2024!XYZ"  # ← NEW TEST
     ]
     
     for query in test_queries:
@@ -593,7 +689,7 @@ def create_root_agent():
         try:
             return Agent(
                 name="security_chatbot",
-                model=Gemini(model_name="gemini-2.0-flash-exp"),
+                model=Gemini(model_name="gemini-2.5-flash"),
                 instruction="⚠️ Error: GOOGLE_API_KEY not configured. Please set your API key."
             )
         except:
