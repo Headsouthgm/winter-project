@@ -1,2 +1,1 @@
-# cd /workspaces/winter-project
-# adk web --reload_agents
+# cd /workspaces/winter-project adk web --reload_agents

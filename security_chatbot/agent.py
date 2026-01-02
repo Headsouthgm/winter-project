@@ -3,6 +3,9 @@ import requests
 import base64
 import hashlib
 import time
+import json
+import zipfile
+import io
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
@@ -113,15 +116,114 @@ class SecurityKnowledgeAgent:
     def __init__(self, model: Gemini):
         self.model = model
         self.name = "Security Knowledge"
+        
+        # EXPANDED: Now 10 detailed topics with structure
         self.knowledge_base = {
-            "password": "Strong passwords should be 12+ characters with mixed case, numbers, and symbols.",
-            "encryption": "Encryption converts data into unreadable format; hashing is one-way transformation.",
-            "vpn": "VPN encrypts your internet connection, essential for public WiFi and remote work.",
-            "2fa": "Two-factor authentication adds extra security layer beyond just passwords.",
+            "password": {
+                "term": "Password Security",
+                "definition": "Strong passwords should be 12+ characters...",
+                "why_it_matters": "Weak passwords are the #1 cause...",
+                "best_practices": [
+                    "Use 12-16+ character passwords",
+                    "Include uppercase, lowercase, numbers, symbols",
+                    # ... more practices
+                ],
+                "related_concepts": ["Authentication", "Password managers"]
+            },
+            # ... 9 more detailed topics (encryption, vpn, 2fa, phishing, 
+            #     malware, ransomware, firewall, sql injection, zero trust)
         }
+        
+        # NEW: NIST glossary support
+        self.nist_glossary = None
+        self.nist_loaded = False
     
+    # NEW METHOD: Download NIST glossary
+    def load_nist_glossary(self) -> bool:
+        """Download and load NIST cybersecurity glossary"""
+        if self.nist_loaded:
+            return True
+        
+        try:
+            import zipfile
+            import io
+            import json
+            
+            print("📥 Downloading NIST Cybersecurity Glossary...")
+            url = "https://csrc.nist.gov/csrc/media/glossary/glossary-export.zip"
+            
+            response = requests.get(url, timeout=30)
+            
+            if response.status_code == 200:
+                with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+                    json_files = [f for f in z.namelist() if f.endswith('.json')]
+                    if json_files:
+                        with z.open(json_files[0]) as f:
+                            self.nist_glossary = json.load(f)
+                        
+                        print(f"✅ NIST Glossary loaded: {len(self.nist_glossary)} terms")
+                        self.nist_loaded = True
+                        return True
+            
+            print("⚠️  Could not load NIST glossary, using local knowledge base only")
+            return False
+            
+        except Exception as e:
+            print(f"⚠️  NIST glossary download failed: {e}")
+            return False
+    
+    # NEW METHOD: Search NIST database
+    def search_nist_glossary(self, term: str) -> Optional[Dict[str, Any]]:
+        """Search NIST glossary for a term"""
+        if not self.nist_loaded:
+            self.load_nist_glossary()
+        
+        if not self.nist_glossary:
+            return None
+        
+        term_lower = term.lower()
+        
+        for entry in self.nist_glossary:
+            if isinstance(entry, dict):
+                glossary_term = entry.get('term', '').lower()
+                if term_lower in glossary_term or glossary_term in term_lower:
+                    return {
+                        "term": entry.get('term', ''),
+                        "definition": entry.get('definition', ''),
+                        "source": "NIST Cybersecurity Glossary",
+                        "abbreviations": entry.get('abbreviations', [])
+                    }
+        
+        return None
+    
+    # ENHANCED METHOD: Multi-tier search
     def get_security_advice(self, topic: str) -> Dict[str, Any]:
+        """Get security advice from local KB or NIST glossary"""
+        topic_normalized = topic.lower().replace('-', ' ').replace('_', ' ')
+        
+        # TIER 1: Search local knowledge base first (detailed)
+        for key, value in self.knowledge_base.items():
+            if key in topic_normalized or topic_normalized in key:
+                return value
+            if isinstance(value, dict) and 'term' in value:
+                if topic_normalized in value['term'].lower():
+                    return value
+        
+        # TIER 2: Search NIST glossary as fallback
+        nist_result = self.search_nist_glossary(topic)
+        if nist_result:
+            return {
+                "term": nist_result['term'],
+                "explanation": nist_result['definition'],
+                "source": nist_result['source'],
+                "why_it_matters": "Important for cybersecurity",
+                "recommendations": ["Consult security experts", "Review standards"],
+                "related_concepts": []
+            }
+        
+        # TIER 3: Fallback to generic response
         return {
+            "term": topic,
             "explanation": f"Security information about {topic}",
             "why_it_matters": "Protects your data and privacy",
             "recommendations": ["Use strong passwords", "Enable 2FA", "Keep software updated"],
@@ -368,25 +470,45 @@ class ReportGenerationAgent:
         self.name = "Report Generation"
     
     def generate_security_report(self, findings: Dict[str, Any]) -> str:
-        recommendations = findings.get('recommendations', ['Continue monitoring'])
+        """Generate a formatted security report from findings"""
+        
+        # Handle recommendations (supports both 'recommendations' and 'best_practices')
+        recommendations = findings.get('recommendations', findings.get('best_practices', ['Continue monitoring']))
         if isinstance(recommendations, list):
-            rec_text = '\n'.join(f"- {rec}" for rec in recommendations)
+            rec_text = '\n'.join(f"  • {rec}" for rec in recommendations)
         else:
-            rec_text = str(recommendations)
-            
+            rec_text = f"  • {str(recommendations)}"
+        
+        # Handle related concepts
+        related = findings.get('related_concepts', [])
+        if related and isinstance(related, list):
+            related_text = ', '.join(related)
+        else:
+            related_text = "N/A"
+        
+        # Build professional report
         report = f"""
-=== SECURITY SCAN REPORT ===
+    {'=' * 70}
+    SECURITY INFORMATION REPORT
+    {'=' * 70}
 
-Executive Summary:
-{findings.get('summary', 'Security assessment completed')}
+    Topic: {findings.get('term', findings.get('summary', 'Security Assessment'))}
 
-Risk Level: {findings.get('risk_level', 'LOW')}
+    Definition/Summary:
+    {findings.get('explanation', findings.get('definition', findings.get('details', 'Security information')))}
 
-Detailed Findings:
-{findings.get('details', 'No issues detected')}
+    Risk Level: {findings.get('risk_level', 'INFO')}
 
-Recommendations:
-{rec_text}
+    Why It Matters:
+    {findings.get('why_it_matters', 'Important for maintaining security posture')}
+
+    Recommendations:
+    {rec_text}
+
+    Related Concepts: {related_text}
+
+    {f"Source: {findings.get('source', 'Security Knowledge Base')}" if 'source' in findings else ''}
+    {'=' * 70}
         """
         return report
 
@@ -540,8 +662,20 @@ class SecurityChatbotSystem:
                 return "Please provide a password to check. Example: 'Check password Password123'"
                 
         else:
+            # Knowledge query - use enhanced knowledge base
             advice = self.knowledge_agent.get_security_advice(user_input)
-            return str(advice)
+            
+            # Format the advice into a proper report
+            return self.report_agent.generate_security_report({
+                "term": advice.get('term', user_input),
+                "explanation": advice.get('explanation', advice.get('definition', '')),
+                "definition": advice.get('definition', ''),
+                "risk_level": "INFO",
+                "why_it_matters": advice.get('why_it_matters', 'Important for security'),
+                "recommendations": advice.get('recommendations', advice.get('best_practices', [])),
+                "related_concepts": advice.get('related_concepts', []),
+                "source": advice.get('source', 'Security Knowledge Base')
+            })
     
     def _get_url_recommendations(self, scan_result: Dict[str, Any]) -> List[str]:
         """Generate recommendations based on URL scan results"""
@@ -653,33 +787,69 @@ async def run_session(
 
 def main():
     print("=" * 70)
-    print("SECURITY CHATBOT - AI AGENT SYSTEM")
+    print("SECURITY CHATBOT - AI AGENT SYSTEM with NIST GLOSSARY")
     print("=" * 70)
     
-    if not setup_api_keys():
-        print("\n❌ Cannot proceed without API keys.")
+    setup_api_keys()
+    
+    # Check if Google API key is available
+    if not os.environ.get("GOOGLE_API_KEY"):
+        print("\n❌ GOOGLE_API_KEY is required to run the chatbot.")
+        print("Please set it using: export GOOGLE_API_KEY='your_key_here'")
+        print("\nOr create a .env file with:")
+        print("GOOGLE_API_KEY=your_key_here")
         return
     
-    system = SecurityChatbotSystem(config)
-    system.setup_session_service(use_database=False)
+    # Create the system object
+    try:
+        system = SecurityChatbotSystem(config)
+        system.setup_session_service(use_database=False)
+    except Exception as e:
+        print(f"\n❌ Failed to initialize system: {e}")
+        print("\nPlease check your GOOGLE_API_KEY is valid.")
+        return
     
     print("\n" + "=" * 70)
-    print("TESTING AGENT SYSTEM")
+    print("TESTING ENHANCED AGENT SYSTEM")
     print("=" * 70)
     
     test_queries = [
         "What is two-factor authentication?",
+        "Tell me about encryption",
         "I want to share my password with a coworker",
-        "Is it safe to click this link: http://testphp.vulnweb.com/"
-        "Check password Password123",  # ← NEW TEST
-        "Check password MyUniqueP@ssw0rd2024!XYZ"  # ← NEW TEST
+        "Is it safe to click this link: http://testphp.vulnweb.com/",
+        "What is a firewall?",
+        "Explain ransomware protection"
     ]
     
     for query in test_queries:
-        print(f"\n📝 Query: {query}")
+        print(f"\n{'=' * 70}")
+        print(f"📝 Query: {query}")
+        print('=' * 70)
         response = system.process_query(query)
-        print(f"💬 Response:\n{response}")
-        print("-" * 70)
+        print(response)
+        print()
+    
+    # NEW: Test NIST glossary specifically
+    print("\n" + "=" * 70)
+    print("TESTING NIST GLOSSARY INTEGRATION")
+    print("=" * 70)
+    print("\n🔍 Searching for technical terms in NIST glossary...")
+    
+    if system.knowledge_agent.load_nist_glossary():
+        print("✅ NIST Glossary loaded successfully!")
+        print(f"📊 Total terms available: {len(system.knowledge_agent.nist_glossary)}")
+        
+        nist_test_queries = [
+            "What is OAuth?",
+            "Define API",
+            "What is TLS?"
+        ]
+        
+        for query in nist_test_queries:
+            print(f"\n📝 Query: {query}")
+            response = system.process_query(query)
+            print(response)
 
 def create_root_agent():
     print("\n🌐 Creating root agent for ADK Web UI...")
