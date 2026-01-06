@@ -130,15 +130,12 @@ class SecurityKnowledgeAgent:
                 ],
                 "related_concepts": ["Authentication", "Password managers"]
             },
-            # ... 9 more detailed topics (encryption, vpn, 2fa, phishing, 
-            #     malware, ransomware, firewall, sql injection, zero trust)
         }
         
-        # NEW: NIST glossary support
         self.nist_glossary = None
         self.nist_loaded = False
     
-    # NEW METHOD: Download NIST glossary
+    # Download NIST glossary
     def load_nist_glossary(self) -> bool:
         """Download and load NIST cybersecurity glossary"""
         if self.nist_loaded:
@@ -172,7 +169,7 @@ class SecurityKnowledgeAgent:
             print(f"⚠️  NIST glossary download failed: {e}")
             return False
     
-    # NEW METHOD: Search NIST database
+    # Search NIST database
     def search_nist_glossary(self, term: str) -> Optional[Dict[str, Any]]:
         """Search NIST glossary for a term"""
         if not self.nist_loaded:
@@ -196,7 +193,6 @@ class SecurityKnowledgeAgent:
         
         return None
     
-    # ENHANCED METHOD: Multi-tier search
     def get_security_advice(self, topic: str) -> Dict[str, Any]:
         """Get security advice from local KB or NIST glossary"""
         topic_normalized = topic.lower().replace('-', ' ').replace('_', ' ')
@@ -209,7 +205,7 @@ class SecurityKnowledgeAgent:
                 if topic_normalized in value['term'].lower():
                     return value
         
-        # TIER 2: Search NIST glossary as fallback
+        # TIER 2
         nist_result = self.search_nist_glossary(topic)
         if nist_result:
             return {
@@ -221,7 +217,7 @@ class SecurityKnowledgeAgent:
                 "related_concepts": []
             }
         
-        # TIER 3: Fallback to generic response
+        # TIER 3
         return {
             "term": topic,
             "explanation": f"Security information about {topic}",
@@ -331,8 +327,7 @@ class ToolOrchestrationAgent:
         try:
             # Generate URL ID for VirusTotal
             url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
-            
-            # Try to get existing analysis
+
             response = requests.get(
                 f"{self.virustotal_base_url}/urls/{url_id}",
                 headers={"x-apikey": api_key},
@@ -409,14 +404,11 @@ class ToolOrchestrationAgent:
     def check_password_breach(self, password: str) -> Dict[str, Any]:
         """Check password using Have I Been Pwned API with k-Anonymity"""
         try:
-            # Step 1: Hash the password with SHA-1
             sha1_hash = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
             
-            # Step 2: Split hash into prefix (first 5 chars) and suffix (rest)
             prefix = sha1_hash[:5]
             suffix = sha1_hash[5:]
             
-            # Step 3: Query HIBP API with only the prefix (k-Anonymity)
             response = requests.get(
                 f"https://api.pwnedpasswords.com/range/{prefix}",
                 timeout=10
