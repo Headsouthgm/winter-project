@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Keys - Security Chatbot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="api-key-container">
+            <button class="back-button" onclick="location.href='/'">← Back to Home</button>
+            
+            <h1>🔑 API Key Configuration</h1>
+            <p class="subtitle">Enter and validate your API keys</p>
+
+            <div class="form-container">
+                <!-- Google API Key -->
+                <div class="input-group">
+                    <label for="google-api-key">
+                        Google API Key <span class="required">*Required</span>
+                    </label>
+                    <input 
+                        type="password" 
+                        id="google-api-key" 
+                        placeholder="Enter your Google API key"
+                        class="api-input"
+                    >
+                    <div id="google-status" class="status-message"></div>
+                    <small class="help-text">
+                        Get your key at: <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>
+                    </small>
+                </div>
+
+                <!-- VirusTotal API Key -->
+                <div class="input-group">
+                    <label for="virustotal-api-key">
+                        VirusTotal API Key <span class="optional">Optional</span>
+                    </label>
+                    <input 
+                        type="password" 
+                        id="virustotal-api-key" 
+                        placeholder="Enter your VirusTotal API key"
+                        class="api-input"
+                    >
+                    <div id="virustotal-status" class="status-message"></div>
+                    <small class="help-text">
+                        Get your key at: <a href="https://www.virustotal.com/gui/join-us" target="_blank">VirusTotal</a>
+                    </small>
+                </div>
+
+                <!-- Validate Button -->
+                <button id="validate-btn" class="validate-button" onclick="validateKeys()">
+                    Validate Keys
+                </button>
+
+                <!-- Success Message -->
+                <div id="success-message" class="success-box" style="display: none;">
+                    <h3>✅ All Set!</h3>
+                    <p>Your API keys have been validated and saved.</p>
+                    <button onclick="location.href='/chatbot'" class="continue-button">
+                        Continue to Chatbot →
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function validateKeys() {
+            const googleKey = document.getElementById('google-api-key').value.trim();
+            const virustotalKey = document.getElementById('virustotal-api-key').value.trim();
+            
+            const validateBtn = document.getElementById('validate-btn');
+            validateBtn.disabled = true;
+            validateBtn.textContent = 'Validating...';
+            
+            // Clear previous status messages
+            document.getElementById('google-status').innerHTML = '';
+            document.getElementById('virustotal-status').innerHTML = '';
+            document.getElementById('success-message').style.display = 'none';
+            
+            if (!googleKey) {
+                document.getElementById('google-status').innerHTML = 
+                    '<span class="error">⚠️ Google API Key is required</span>';
+                validateBtn.disabled = false;
+                validateBtn.textContent = 'Validate Keys';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/validate-keys', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        google_api_key: googleKey,
+                        virustotal_api_key: virustotalKey
+                    })
+                });
+                
+                const result = await response.json();
+                
+                // Display Google API key status
+                if (result.google_valid) {
+                    document.getElementById('google-status').innerHTML = 
+                        `<span class="success">${result.google_message}</span>`;
+                } else {
+                    document.getElementById('google-status').innerHTML = 
+                        `<span class="error">${result.google_message}</span>`;
+                }
+                
+                // Display VirusTotal API key status
+                if (result.virustotal_valid) {
+                    document.getElementById('virustotal-status').innerHTML = 
+                        `<span class="success">${result.virustotal_message}</span>`;
+                } else {
+                    document.getElementById('virustotal-status').innerHTML = 
+                        `<span class="warning">${result.virustotal_message}</span>`;
+                }
+                
+                // Show success message if Google key is valid
+                if (result.google_valid) {
+                    document.getElementById('success-message').style.display = 'block';
+                }
+                
+            } catch (error) {
+                document.getElementById('google-status').innerHTML = 
+                    `<span class="error">❌ Validation failed: ${error.message}</span>`;
+            } finally {
+                validateBtn.disabled = false;
+                validateBtn.textContent = 'Validate Keys';
+            }
+        }
+        
+        // Allow Enter key to submit
+        document.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                validateKeys();
+            }
+        });
+    </script>
+</body>
+</html>

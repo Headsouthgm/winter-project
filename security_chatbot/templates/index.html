@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Chatbot - Home</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Top Center: Title -->
+        <div class="header-box">
+            <h1>Security Chatbot</h1>
+            <p>Your AI-Powered Security Assistant</p>
+        </div>
+
+        <!-- Main Grid Layout -->
+        <div class="grid-container">
+            <!-- Left Side: API Key -->
+            <div class="card card-left" onclick="location.href='/api-keys'">
+                <div class="card-content">
+                    <div class="icon">🔑</div>
+                    <h2>API Keys</h2>
+                    <p>Configure your API keys</p>
+                </div>
+            </div>
+
+            <!-- Right Side: Chatbot -->
+            <div class="card card-right" onclick="location.href='/chatbot'">
+                <div class="card-content">
+                    <div class="icon">💬</div>
+                    <h2>Chatbot</h2>
+                    <p>Chat with AI security expert</p>
+                </div>
+            </div>
+
+            <!-- Bottom Left: Tutorial/Guide -->
+            <div class="card card-bottom-left" onclick="location.href='/guide'">
+                <div class="card-content">
+                    <div class="icon">📚</div>
+                    <h2>Tutorial/Guide</h2>
+                    <p>Learn how to use the chatbot</p>
+                </div>
+            </div>
+
+            <!-- Bottom Right: Fun Facts -->
+            <div class="card card-bottom-right" onclick="location.href='/fun-facts'">
+                <div class="card-content">
+                    <div class="icon">🎯</div>
+                    <h2>Fun Facts</h2>
+                    <p>Test your security knowledge</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

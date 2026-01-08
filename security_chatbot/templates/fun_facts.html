@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fun Facts - Security Quiz</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="quiz-container">
+            <button class="back-button" onclick="location.href='/'">← Back to Home</button>
+            
+            <h1>🎯 Fun Facts Quiz</h1>
+            <p class="subtitle">Test your data security knowledge!</p>
+
+            <!-- Question 1: Example Question -->
+            <div class="question-card" id="question-1">
+                <h3>Question 1: What is a Passkey?</h3>
+                
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q1', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">A physical key used to unlock computers</span>
+                    </button>
+                    
+                    <button class="option-btn" onclick="selectAnswer('q1', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">A FIDO2 credential that replaces passwords with biometric or device-based authentication</span>
+                    </button>
+                    
+                    <button class="option-btn" onclick="selectAnswer('q1', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">A master password that unlocks all your accounts</span>
+                    </button>
+                    
+                    <button class="option-btn" onclick="selectAnswer('q1', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">A temporary password sent via email</span>
+                    </button>
+                </div>
+                
+                <div id="result-q1" class="result-message"></div>
+            </div>
+
+            <!-- More questions can be added here -->
+            <div class="quiz-footer">
+                <p>More questions coming soon...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedQuestions = {};
+        
+        async function selectAnswer(questionId, answer, buttonElement) {
+            // Prevent multiple selections
+            if (selectedQuestions[questionId]) {
+                return;
+            }
+            
+            selectedQuestions[questionId] = answer;
+            
+            // Disable all buttons for this question
+            const questionCard = buttonElement.closest('.question-card');
+            const allButtons = questionCard.querySelectorAll('.option-btn');
+            allButtons.forEach(btn => btn.disabled = true);
+            
+            try {
+                const response = await fetch('/api/check-answer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        question_id: questionId,
+                        answer: answer
+                    })
+                });
+                
+                const result = await response.json();
+                
+                // Apply correct/incorrect styling
+                if (result.correct) {
+                    buttonElement.classList.add('correct');
+                    showResult(questionId, true, result.explanation);
+                } else {
+                    buttonElement.classList.add('incorrect');
+                    // Also highlight the correct answer
+                    highlightCorrectAnswer(questionId, allButtons);
+                    showResult(questionId, false, result.explanation);
+                }
+                
+            } catch (error) {
+                console.error('Error checking answer:', error);
+                showResult(questionId, false, 'Error checking answer');
+            }
+        }
+        
+        function highlightCorrectAnswer(questionId, buttons) {
+            // For question 1, correct answer is B
+            if (questionId === 'q1') {
+                buttons.forEach(btn => {
+                    if (btn.textContent.includes('FIDO2 credential')) {
+                        btn.classList.add('correct');
+                    }
+                });
+            }
+        }
+        
+        function showResult(questionId, isCorrect, explanation) {
+            const resultDiv = document.getElementById(`result-${questionId}`);
+            
+            if (isCorrect) {
+                resultDiv.innerHTML = `
+                    <div class="success-result">
+                        <strong>✅ Correct!</strong>
+                        <p>${explanation}</p>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="error-result">
+                        <strong>❌ Incorrect</strong>
+                        <p>${explanation}</p>
+                    </div>
+                `;
+            }
+            
+            resultDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
