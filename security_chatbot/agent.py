@@ -10,324 +10,140 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-
 try:
-    from google.adk.agents import Agent, LlmAgent
-    from google.adk.apps.app import App, EventsCompactionConfig
-    from google.adk.models.google_llm import Gemini
-    from google.adk.sessions import DatabaseSessionService, InMemorySessionService
-    from google.adk.runners import Runner
-    from google.adk.tools.tool_context import ToolContext
-    from google.genai import types
-    print("✅ ADK components imported successfully.")
+    import google.generativeai as genai
+    print("✅ Google Generative AI imported successfully.")
+    GENAI_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  ADK not installed. Run: pip install google-adk")
-    print(f"Error details: {e}")
+    print(f"⚠️ google-generativeai not installed. Run: pip install google-generativeai")
+    GENAI_AVAILABLE = False
 
-#  Define security risk levels Use: Classify how dangerous a security scenario is
 class RiskLevel(Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
-#  Store all configuration settings
 @dataclass
 class SecurityConfig:
-    model_name: str = "gemini-2.5-flash"
-    max_retry_attempts: int = 5
-    retry_exp_base: int = 7
-    retry_initial_delay: int = 1
-    user_id: str = "default_user"
-    app_name: str = "security_chatbot"
+    model_name: str = "gemini-2.5-flash"  # ✅ Using original model
     virustotal_api_key: Optional[str] = None
-    google_safe_browsing_key: Optional[str] = None
-    hibp_api_key: Optional[str] = None
-
 
 config = SecurityConfig()
 
-# retry API calls when it is busy or has an error
-retry_config = types.HttpRetryOptions(
-    attempts=config.max_retry_attempts,
-    exp_base=config.retry_exp_base,
-    initial_delay=config.retry_initial_delay,
-    http_status_codes=[429, 500, 503, 504],
-)
-
-# check for Google API key and VirusTotal API key
-def setup_api_keys():
-    # Check for Google API key
-    try:
-        from kaggle_secrets import UserSecretsClient
-        GOOGLE_API_KEY = UserSecretsClient().get_secret("GOOGLE_API_KEY")
-        os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
-        print("✅ Gemini API key setup complete (Kaggle).")
-    except:
-        if "GOOGLE_API_KEY" in os.environ:
-            print("✅ Gemini API key found in environment.")
-        else:
-            print("🔑 WARNING: GOOGLE_API_KEY not found!")
-            print("Please set it using: export GOOGLE_API_KEY='your_key_here'")
-            return False
-    
-    # Check for VirusTotal API key
-    if "VIRUSTOTAL_API_KEY" in os.environ:
-        config.virustotal_api_key = os.environ["VIRUSTOTAL_API_KEY"]
-        print("✅ VirusTotal API key found in environment.")
-    else:
-        print("⚠️  VirusTotal API key not found. URL/file scanning will be limited.")
-        print("Set it with: export VIRUSTOTAL_API_KEY='your_key_here'")
-    
-    return True
-
-# Decides which specialist agent should handle the query
-class ConversationalAgent:
-    def __init__(self, model: Gemini):
+# ===================================================================
+# MAIN CONVERSATIONAL AGENT
+# ===================================================================
+class MainConversationalAgent:
+    def __init__(self, model):
         self.model = model
-        self.name = "Conversational Interface"
+        self.name = "Main Conversational Agent"
     
-    def classify_query(self, user_input: str) -> str:
-        user_input_lower = user_input.lower()
-        # Looks for keywords (scan, url, password, risk) and reach different tools
-        if any(word in user_input_lower for word in ['scan', 'check file', 'virus', 'malware']):
-            return "file_scan"
-        elif any(word in user_input_lower for word in ['link', 'url', 'website', 'phishing']):
-            return "url_scan"
-        elif any(word in user_input_lower for word in ['password', 'credential', 'been pwned']):
-            return "password_check"
-        elif any(word in user_input_lower for word in ['risk', 'safe to', 'should i', 'is it okay']):
-            return "risk_assessment"
-        else:
-            return "knowledge_query"
-    
-    def route_request(self, query_type: str, user_input: str) -> str:
-        routing_map = {
-            "file_scan": "Tool Orchestration Agent",
-            "url_scan": "Tool Orchestration Agent",
-            "password_check": "Tool Orchestration Agent",
-            "risk_assessment": "Risk Assessment Agent",
-            "knowledge_query": "Security Knowledge Agent"
-        }
-        return routing_map.get(query_type, "Security Knowledge Agent")
-
-# pre-define knowledge(change to a dataset if possible)
-class SecurityKnowledgeAgent:
-    def __init__(self, model: Gemini):
-        self.model = model
-        self.name = "Security Knowledge"
-        
-        # EXPANDED: Now 10 detailed topics with structure
-        self.knowledge_base = {
-            "password": {
-                "term": "Password Security",
-                "definition": "Strong passwords should be 12+ characters...",
-                "why_it_matters": "Weak passwords are the #1 cause...",
-                "best_practices": [
-                    "Use 12-16+ character passwords",
-                    "Include uppercase, lowercase, numbers, symbols",
-                    # ... more practices
-                ],
-                "related_concepts": ["Authentication", "Password managers"]
-            },
-        }
-        
-        self.nist_glossary = None
-        self.nist_loaded = False
-    
-    # Download NIST glossary
-    def load_nist_glossary(self) -> bool:
-        """Download and load NIST cybersecurity glossary"""
-        if self.nist_loaded:
-            return True
-        
+    def respond(self, user_input: str) -> str:
+        """Generate natural conversational response"""
         try:
-            import zipfile
-            import io
-            import json
-            
-            print("📥 Downloading NIST Cybersecurity Glossary...")
-            url = "https://csrc.nist.gov/csrc/media/glossary/glossary-export.zip"
-            
-            response = requests.get(url, timeout=30)
-            
-            if response.status_code == 200:
-                with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-                    json_files = [f for f in z.namelist() if f.endswith('.json')]
-                    if json_files:
-                        with z.open(json_files[0]) as f:
-                            self.nist_glossary = json.load(f)
-                        
-                        print(f"✅ NIST Glossary loaded: {len(self.nist_glossary)} terms")
-                        self.nist_loaded = True
-                        return True
-            
-            print("⚠️  Could not load NIST glossary, using local knowledge base only")
-            return False
-            
+            response = self.model.generate_content(user_input)
+            return response.text
         except Exception as e:
-            print(f"⚠️  NIST glossary download failed: {e}")
-            return False
-    
-    # Search NIST database
-    def search_nist_glossary(self, term: str) -> Optional[Dict[str, Any]]:
-        """Search NIST glossary for a term"""
-        if not self.nist_loaded:
-            self.load_nist_glossary()
-        
-        if not self.nist_glossary:
-            return None
-        
-        term_lower = term.lower()
-        
-        for entry in self.nist_glossary:
-            if isinstance(entry, dict):
-                glossary_term = entry.get('term', '').lower()
-                if term_lower in glossary_term or glossary_term in term_lower:
-                    return {
-                        "term": entry.get('term', ''),
-                        "definition": entry.get('definition', ''),
-                        "source": "NIST Cybersecurity Glossary",
-                        "abbreviations": entry.get('abbreviations', [])
-                    }
-        
-        return None
-    
-    def get_security_advice(self, topic: str) -> Dict[str, Any]:
-        """Get security advice from local KB or NIST glossary"""
-        topic_normalized = topic.lower().replace('-', ' ').replace('_', ' ')
-        
-        # TIER 1: Search local knowledge base first (detailed)
-        for key, value in self.knowledge_base.items():
-            if key in topic_normalized or topic_normalized in key:
-                return value
-            if isinstance(value, dict) and 'term' in value:
-                if topic_normalized in value['term'].lower():
-                    return value
-        
-        # TIER 2
-        nist_result = self.search_nist_glossary(topic)
-        if nist_result:
-            return {
-                "term": nist_result['term'],
-                "explanation": nist_result['definition'],
-                "source": nist_result['source'],
-                "why_it_matters": "Important for cybersecurity",
-                "recommendations": ["Consult security experts", "Review standards"],
-                "related_concepts": []
-            }
-        
-        # TIER 3
-        return {
-            "term": topic,
-            "explanation": f"Security information about {topic}",
-            "why_it_matters": "Protects your data and privacy",
-            "recommendations": ["Use strong passwords", "Enable 2FA", "Keep software updated"],
-            "related_concepts": ["Authentication", "Authorization", "Encryption"]
-        }
+            print(f"Error: {e}")
+            return "I'm here to help with your security questions. What would you like to know?"
 
-# Evaluates security risks in user scenarios
-class RiskAssessmentAgent:
-    def __init__(self, model: Gemini):
-        self.model = model
-        self.name = "Risk Assessment"
+# ===================================================================
+# PASSWORD SAFETY AGENT
+# ===================================================================
+class PasswordSafetyAgent:
+    def __init__(self):
+        self.name = "Password Safety Checker (HIBP)"
     
-    def assess_risk(self, scenario: str) -> Dict[str, Any]:
-        risk_keywords = {
-            RiskLevel.CRITICAL: ['password', 'database', 'customer data', 'personal gmail'],
-            RiskLevel.HIGH: ['share', 'email', 'usb drive', 'public wifi'],
-            RiskLevel.MEDIUM: ['download', 'attachment', 'link'],
-            RiskLevel.LOW: ['question', 'ask', 'learn']
-        }
-        
-        scenario_lower = scenario.lower()
-        risk_level = RiskLevel.LOW
-        
-        for level, keywords in risk_keywords.items():
-            if any(keyword in scenario_lower for keyword in keywords):
-                risk_level = level
-                break
-        
-        return {
-            "risk_level": risk_level.value,
-            "reasons": ["Action involves sensitive data", "Unencrypted transmission"],
-            "consequences": ["Data breach", "Compliance violation"],
-            "recommendations": ["Use secure file sharing", "Enable encryption"]
-        }
-
-# Calls external security APIs with REAL VirusTotal integration
-class ToolOrchestrationAgent:
-    def __init__(self, config: SecurityConfig):
-        self.config = config
-        self.name = "Tool Orchestration"
-        self.virustotal_base_url = "https://www.virustotal.com/api/v3"
-    
-    def scan_file(self, file_hash: str) -> Dict[str, Any]:
-        """Scan file using VirusTotal API"""
-        api_key = self.config.virustotal_api_key
-        
-        if not api_key:
-            return {
-                "error": "VirusTotal API key not configured",
-                "tool": "VirusTotal",
-                "status": "unavailable"
-            }
-        
+    def check_password(self, password: str) -> Dict[str, Any]:
+        """Check password against Have I Been Pwned database"""
         try:
-            headers = {"x-apikey": api_key}
+            sha1_hash = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
+            prefix = sha1_hash[:5]
+            suffix = sha1_hash[5:]
+            
             response = requests.get(
-                f"{self.virustotal_base_url}/files/{file_hash}",
-                headers=headers,
+                f"https://api.pwnedpasswords.com/range/{prefix}",
                 timeout=10
             )
             
             if response.status_code == 200:
-                data = response.json()
-                stats = data['data']['attributes']['last_analysis_stats']
+                hashes = response.text.split('\n')
+                
+                for line in hashes:
+                    if ':' in line:
+                        hash_suffix, count = line.split(':')
+                        if hash_suffix.strip() == suffix:
+                            breach_count = int(count.strip())
+                            return {
+                                "safe": False,
+                                "breached": True,
+                                "breach_count": breach_count,
+                                "risk_level": "CRITICAL",
+                                "should_change": True,
+                                "message": f"⚠️ DANGER: This password was exposed {breach_count:,} times in data breaches!",
+                                "recommendations": [
+                                    f"🚫 DO NOT use this password - it appeared in {breach_count:,} breaches",
+                                    "Change it immediately on ALL accounts",
+                                    "Use a unique, randomly generated password",
+                                    "Enable two-factor authentication (2FA)",
+                                    "Consider using a password manager (Bitwarden, 1Password)"
+                                ]
+                            }
                 
                 return {
-                    "tool": "VirusTotal",
-                    "status": "malicious" if stats['malicious'] > 0 else "clean",
-                    "detections": stats['malicious'],
-                    "total_scans": sum(stats.values()),
-                    "suspicious": stats.get('suspicious', 0),
-                    "undetected": stats.get('undetected', 0),
-                    "harmless": stats.get('harmless', 0)
-                }
-            elif response.status_code == 404:
-                return {
-                    "tool": "VirusTotal",
-                    "status": "not_found",
-                    "message": "File not found in VirusTotal database"
+                    "safe": True,
+                    "breached": False,
+                    "breach_count": 0,
+                    "risk_level": "LOW",
+                    "should_change": False,
+                    "message": "✅ GOOD NEWS: This password has not been found in known data breaches",
+                    "recommendations": [
+                        "✅ Password appears safe from known breaches",
+                        "Still ensure it's unique and not used elsewhere",
+                        "Use 12-16+ characters with mixed case, numbers, symbols",
+                        "Enable 2FA for additional security",
+                        "Consider using a password manager"
+                    ]
                 }
             else:
                 return {
-                    "tool": "VirusTotal",
-                    "status": "error",
-                    "message": f"API error: {response.status_code}"
+                    "safe": None,
+                    "error": True,
+                    "message": f"Unable to check password (API error: {response.status_code})"
                 }
                 
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             return {
-                "tool": "VirusTotal",
-                "status": "error",
-                "message": f"Request failed: {str(e)}"
+                "safe": None,
+                "error": True,
+                "message": f"Error checking password: {str(e)}"
             }
+
+# ===================================================================
+# URL SAFETY AGENT
+# ===================================================================
+class URLSafetyAgent:
+    def __init__(self, config: SecurityConfig):
+        self.config = config
+        self.name = "URL Safety Checker (VirusTotal)"
+        self.virustotal_base_url = "https://www.virustotal.com/api/v3"
     
     def check_url(self, url: str) -> Dict[str, Any]:
-        """Check URL using VirusTotal API"""
+        """Check URL safety using VirusTotal"""
         api_key = self.config.virustotal_api_key
         
         if not api_key:
             return {
-                "error": "VirusTotal API key not configured",
-                "virustotal": "unavailable"
+                "safe": None,
+                "error": True,
+                "message": "VirusTotal API key not configured",
+                "recommendations": ["Configure VirusTotal API key for URL scanning"]
             }
         
         try:
-            # Generate URL ID for VirusTotal
             url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
-
+            
             response = requests.get(
                 f"{self.virustotal_base_url}/urls/{url_id}",
                 headers={"x-apikey": api_key},
@@ -338,37 +154,85 @@ class ToolOrchestrationAgent:
                 data = response.json()
                 stats = data['data']['attributes']['last_analysis_stats']
                 
-                is_malicious = stats.get('malicious', 0) > 0
-                is_suspicious = stats.get('suspicious', 0) > 0
+                malicious = stats.get('malicious', 0)
+                suspicious = stats.get('suspicious', 0)
+                harmless = stats.get('harmless', 0)
+                total = sum(stats.values())
+                
+                if malicious > 0:
+                    risk_level = "CRITICAL"
+                    safe = False
+                    should_access = False
+                    virus_possibility = f"{(malicious/total)*100:.1f}%"
+                    message = f"⚠️ DANGER: {malicious}/{total} security vendors flagged this URL as MALICIOUS!"
+                    recommendations = [
+                        "🚫 DO NOT visit this URL!",
+                        f"{malicious} security vendors detected threats",
+                        "This URL may contain malware, phishing, or other threats",
+                        "Report to IT security if received via email",
+                        "Clear browser cache if already visited"
+                    ]
+                elif suspicious > 0:
+                    risk_level = "HIGH"
+                    safe = False
+                    should_access = False
+                    virus_possibility = f"{(suspicious/total)*100:.1f}%"
+                    message = f"⚠️ WARNING: {suspicious}/{total} vendors flagged as SUSPICIOUS"
+                    recommendations = [
+                        "⚠️ Exercise EXTREME caution",
+                        f"{suspicious} vendors flagged suspicious activity",
+                        "Verify URL is from a legitimate, trusted source",
+                        "Consider using a sandbox environment",
+                        "Do not enter any personal information"
+                    ]
+                else:
+                    risk_level = "LOW"
+                    safe = True
+                    should_access = True
+                    virus_possibility = "0%"
+                    message = f"✅ SAFE: {harmless}/{total} vendors found no threats"
+                    recommendations = [
+                        "✅ URL appears safe based on current analysis",
+                        f"Scanned by {total} security vendors",
+                        "Still verify the domain matches what you expect",
+                        "Use HTTPS connections when possible",
+                        "Keep your browser and security software updated"
+                    ]
                 
                 return {
-                    "url": url,
-                    "virustotal": "malicious" if is_malicious else ("suspicious" if is_suspicious else "clean"),
-                    "detections": stats.get('malicious', 0),
-                    "total_scans": sum(stats.values()),
-                    "suspicious": stats.get('suspicious', 0),
-                    "harmless": stats.get('harmless', 0),
-                    "undetected": stats.get('undetected', 0)
+                    "safe": safe,
+                    "should_access": should_access,
+                    "risk_level": risk_level,
+                    "virus_possibility": virus_possibility,
+                    "detections": {
+                        "malicious": malicious,
+                        "suspicious": suspicious,
+                        "harmless": harmless,
+                        "total_scans": total
+                    },
+                    "message": message,
+                    "recommendations": recommendations
                 }
             
             elif response.status_code == 404:
-                # URL not in database, submit for scanning
                 return self._submit_url_for_scan(url, api_key)
             
             else:
                 return {
-                    "virustotal": "error",
-                    "message": f"API error: {response.status_code}"
+                    "safe": None,
+                    "error": True,
+                    "message": f"VirusTotal API error: {response.status_code}"
                 }
                 
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             return {
-                "virustotal": "error",
-                "message": f"Request failed: {str(e)}"
+                "safe": None,
+                "error": True,
+                "message": f"Error checking URL: {str(e)}"
             }
     
     def _submit_url_for_scan(self, url: str, api_key: str) -> Dict[str, Any]:
-        """Submit URL to VirusTotal for scanning"""
+        """Submit URL to VirusTotal for first-time scanning"""
         try:
             headers = {
                 "x-apikey": api_key,
@@ -384,493 +248,231 @@ class ToolOrchestrationAgent:
             
             if response.status_code == 200:
                 return {
-                    "url": url,
-                    "virustotal": "scanning",
-                    "message": "URL submitted for scanning. Check back in a few moments.",
-                    "scan_id": response.json()['data']['id']
+                    "safe": None,
+                    "pending_scan": True,
+                    "risk_level": "UNKNOWN",
+                    "message": "⏳ URL submitted for scanning",
+                    "recommendations": [
+                        "This URL was not previously scanned",
+                        "Check back in a few moments for results",
+                        "Exercise caution until scan completes"
+                    ]
                 }
             else:
                 return {
-                    "virustotal": "error",
-                    "message": f"Failed to submit URL: {response.status_code}"
+                    "safe": None,
+                    "error": True,
+                    "message": f"Failed to submit URL for scanning"
                 }
-                
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             return {
-                "virustotal": "error",
-                "message": f"Submission failed: {str(e)}"
+                "safe": None,
+                "error": True,
+                "message": f"Submission error: {str(e)}"
             }
+
+# ===================================================================
+# SECURITY KNOWLEDGE AGENT
+# ===================================================================
+class SecurityKnowledgeAgent:
+    def __init__(self, model):
+        self.model = model
+        self.name = "Security Knowledge (NIST)"
+        
+        self.knowledge_base = {
+            "password": {
+                "term": "Password Security",
+                "definition": "Strong passwords should be 12+ characters with mixed case, numbers, and symbols",
+                "why_it_matters": "Weak passwords are the #1 cause of security breaches",
+                "best_practices": [
+                    "Use 12-16+ character passwords",
+                    "Include uppercase, lowercase, numbers, symbols",
+                    "Never reuse passwords across sites"
+                ],
+                "related_concepts": ["Authentication", "Password managers", "2FA"]
+            },
+        }
+        
+        self.nist_glossary = None
+        self.nist_loaded = False
     
-    def check_password_breach(self, password: str) -> Dict[str, Any]:
-        """Check password using Have I Been Pwned API with k-Anonymity"""
+    def load_nist_glossary(self) -> bool:
+        """Download NIST cybersecurity glossary database"""
+        if self.nist_loaded:
+            return True
+        
         try:
-            sha1_hash = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
-            
-            prefix = sha1_hash[:5]
-            suffix = sha1_hash[5:]
-            
-            response = requests.get(
-                f"https://api.pwnedpasswords.com/range/{prefix}",
-                timeout=10
-            )
+            print("📥 Downloading NIST Cybersecurity Glossary...")
+            url = "https://csrc.nist.gov/csrc/media/glossary/glossary-export.zip"
+            response = requests.get(url, timeout=30)
             
             if response.status_code == 200:
-                # Step 4: Check if our suffix appears in the results
-                hashes = response.text.split('\n')
-                
-                for line in hashes:
-                    if ':' in line:
-                        hash_suffix, count = line.split(':')
-                        if hash_suffix.strip() == suffix:
-                            breach_count = int(count.strip())
-                            return {
-                                "breached": True,
-                                "breach_count": breach_count,
-                                "tool": "Have I Been Pwned",
-                                "status": "breached",
-                                "message": f"⚠️ WARNING: This password has been exposed {breach_count:,} times in data breaches!",
-                                "recommendation": "Choose a different, unique password immediately"
-                            }
-                
-                # Password not found in breaches
-                return {
-                    "breached": False,
-                    "breach_count": 0,
-                    "tool": "Have I Been Pwned",
-                    "status": "safe",
-                    "message": "✅ Good news! This password has not been found in known data breaches.",
-                    "recommendation": "Still ensure it's unique and not used elsewhere"
-                }
+                with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+                    json_files = [f for f in z.namelist() if f.endswith('.json')]
+                    if json_files:
+                        with z.open(json_files[0]) as f:
+                            self.nist_glossary = json.load(f)
+                        print(f"✅ NIST Glossary loaded: {len(self.nist_glossary)} terms")
+                        self.nist_loaded = True
+                        return True
             
-            else:
-                return {
-                    "tool": "Have I Been Pwned",
-                    "status": "error",
-                    "message": f"API error: {response.status_code}"
-                }
-                
-        except requests.exceptions.RequestException as e:
+            print("⚠️ Could not load NIST glossary")
+            return False
+        except Exception as e:
+            print(f"⚠️ NIST glossary download failed: {e}")
+            return False
+    
+    def search_nist_glossary(self, term: str) -> Optional[Dict[str, Any]]:
+        """Search NIST database for security term"""
+        if not self.nist_loaded:
+            self.load_nist_glossary()
+        
+        if not self.nist_glossary:
+            return None
+        
+        term_lower = term.lower()
+        for entry in self.nist_glossary:
+            if isinstance(entry, dict):
+                glossary_term = entry.get('term', '').lower()
+                if term_lower in glossary_term or glossary_term in term_lower:
+                    return {
+                        "term": entry.get('term', ''),
+                        "definition": entry.get('definition', ''),
+                        "source": "NIST Cybersecurity Glossary",
+                        "abbreviations": entry.get('abbreviations', [])
+                    }
+        return None
+    
+    def get_security_knowledge(self, question: str) -> Dict[str, Any]:
+        """Get security knowledge from NIST or local database"""
+        topic_normalized = question.lower().replace('-', ' ').replace('_', ' ')
+        
+        for key, value in self.knowledge_base.items():
+            if key in topic_normalized:
+                return value
+        
+        nist_result = self.search_nist_glossary(question)
+        if nist_result:
             return {
-                "tool": "Have I Been Pwned",
-                "status": "error",
-                "message": f"Request failed: {str(e)}"
+                "term": nist_result['term'],
+                "explanation": nist_result['definition'],
+                "source": nist_result['source'],
+                "why_it_matters": "Important for cybersecurity compliance and best practices",
+                "recommendations": ["Consult security experts", "Review NIST standards"],
+                "related_concepts": []
             }
-
-# Formats findings into readable reports
-class ReportGenerationAgent:
-    def __init__(self):
-        self.name = "Report Generation"
-    
-    def generate_security_report(self, findings: Dict[str, Any]) -> str:
-        """Generate a formatted security report from findings"""
         
-        # Handle recommendations (supports both 'recommendations' and 'best_practices')
-        recommendations = findings.get('recommendations', findings.get('best_practices', ['Continue monitoring']))
-        if isinstance(recommendations, list):
-            rec_text = '\n'.join(f"  • {rec}" for rec in recommendations)
-        else:
-            rec_text = f"  • {str(recommendations)}"
-        
-        # Handle related concepts
-        related = findings.get('related_concepts', [])
-        if related and isinstance(related, list):
-            related_text = ', '.join(related)
-        else:
-            related_text = "N/A"
-        
-        # Build professional report
-        report = f"""
-    {'=' * 70}
-    SECURITY INFORMATION REPORT
-    {'=' * 70}
-
-    Topic: {findings.get('term', findings.get('summary', 'Security Assessment'))}
-
-    Definition/Summary:
-    {findings.get('explanation', findings.get('definition', findings.get('details', 'Security information')))}
-
-    Risk Level: {findings.get('risk_level', 'INFO')}
-
-    Why It Matters:
-    {findings.get('why_it_matters', 'Important for maintaining security posture')}
-
-    Recommendations:
-    {rec_text}
-
-    Related Concepts: {related_text}
-
-    {f"Source: {findings.get('source', 'Security Knowledge Base')}" if 'source' in findings else ''}
-    {'=' * 70}
-        """
-        return report
-
-# Learns from user feedback
-class LearningAgent:
-    def __init__(self):
-        self.name = "Learning & Improvement"
-        self.feedback_data = []
-    
-    def collect_feedback(self, interaction_id: str, rating: int, comments: str):
-        self.feedback_data.append({
-            "id": interaction_id,
-            "rating": rating,
-            "comments": comments
-        })
-    
-    def analyze_feedback(self) -> Dict[str, Any]:
-        if not self.feedback_data:
-            return {"average_rating": 0, "insights": []}
-        
-        avg_rating = sum(f["rating"] for f in self.feedback_data) / len(self.feedback_data)
         return {
-            "average_rating": avg_rating,
-            "total_interactions": len(self.feedback_data),
-            "insights": ["System performing well"]
+            "term": question,
+            "explanation": f"Security information about {question}",
+            "why_it_matters": "Protects your data and privacy",
+            "recommendations": ["Use strong passwords", "Enable 2FA", "Keep software updated"],
+            "related_concepts": ["Authentication", "Authorization", "Encryption"]
         }
 
-# Creates and manages all 6 specialist agents
+# ===================================================================
+# REPORT GENERATOR
+# ===================================================================
+class ReportGenerator:
+    def __init__(self):
+        self.name = "Report Generator"
+    
+    def generate_password_report(self, result: Dict[str, Any]) -> str:
+        """Generate password safety report"""
+        recs = '\n'.join(f"  • {rec}" for rec in result.get('recommendations', []))
+        
+        return f"""
+    {'=' * 70}
+    PASSWORD SAFETY REPORT
+    {'=' * 70}
+
+    Status: {"✅ SAFE" if result.get('safe') else "⚠️ UNSAFE"}
+    Risk Level: {result.get('risk_level', 'UNKNOWN')}
+    
+    {result.get('message', '')}
+    
+    Breach Information:
+      • Found in breaches: {"YES" if result.get('breached') else "NO"}
+      • Times exposed: {result.get('breach_count', 0):,}
+      • Should change: {"YES - IMMEDIATELY" if result.get('should_change') else "No"}
+    
+    Recommendations:
+    {recs}
+    
+    {'=' * 70}
+        """
+    
+    def generate_url_report(self, url: str, result: Dict[str, Any]) -> str:
+        """Generate URL safety report"""
+        recs = '\n'.join(f"  • {rec}" for rec in result.get('recommendations', []))
+        detections = result.get('detections', {})
+        
+        return f"""
+    {'=' * 70}
+    URL SAFETY REPORT
+    {'=' * 70}
+
+    URL: {url}
+    Status: {"✅ SAFE" if result.get('safe') else "⚠️ UNSAFE"}
+    Risk Level: {result.get('risk_level', 'UNKNOWN')}
+    
+    {result.get('message', '')}
+    
+    Security Analysis:
+      • Safe to access: {"YES" if result.get('should_access') else "NO"}
+      • Virus possibility: {result.get('virus_possibility', 'Unknown')}
+      • Malicious detections: {detections.get('malicious', 0)}/{detections.get('total_scans', 0)}
+      • Suspicious flags: {detections.get('suspicious', 0)}/{detections.get('total_scans', 0)}
+    
+    Recommendations:
+    {recs}
+    
+    {'=' * 70}
+        """
+    
+    def generate_knowledge_report(self, findings: Dict[str, Any]) -> str:
+        """Generate security knowledge report with only Topic, Definition, Why It Matters, and Application"""
+        
+        applications = findings.get('recommendations', findings.get('best_practices', []))
+        if isinstance(applications, list):
+            app_text = '\n'.join(f"  • {app}" for app in applications)
+        else:
+            app_text = f"  • {str(applications)}"
+        
+        return f"""
+    {'=' * 70}
+    SECURITY KNOWLEDGE REPORT
+    {'=' * 70}
+
+    Topic: {findings.get('term', 'Security Information')}
+
+    Definition:
+    {findings.get('explanation', findings.get('definition', 'Information not available'))}
+
+    Why It Matters:
+    {findings.get('why_it_matters', 'Important for security')}
+
+    Application:
+    {app_text}
+
+    {'=' * 70}
+        """
+
+# ===================================================================
+# MAIN SECURITY CHATBOT SYSTEM
+# ✅ HYBRID: Keywords for routing (no API call), AI only for responses
+# ===================================================================
 class SecurityChatbotSystem:
-    def __init__(self, config: SecurityConfig):
-        self.config = config
-        self.session_service = None
-        self.runner = None
-        
-        try:
-            self.model = Gemini(model_name=config.model_name)
-            print(f"✅ Model initialized: {config.model_name}")
-        except Exception as e:
-            print(f"❌ Failed to initialize model: {e}")
-            self.model = None
-        
-        self.conversational_agent = ConversationalAgent(self.model) if self.model else None
-        self.knowledge_agent = SecurityKnowledgeAgent(self.model) if self.model else None
-        self.risk_agent = RiskAssessmentAgent(self.model) if self.model else None
-        self.tool_agent = ToolOrchestrationAgent(config)
-        self.report_agent = ReportGenerationAgent()
-        self.learning_agent = LearningAgent()
-        
-        print("✅ All agents initialized successfully.")
-    
-    def setup_session_service(self, use_database: bool = False):
-        if use_database:
-            self.session_service = DatabaseSessionService(
-                database_url="sqlite:///./security_chatbot.db"
-            )
-            print("✅ Database session service configured.")
-        else:
-            self.session_service = InMemorySessionService()
-            print("✅ In-memory session service configured.")
-    
-    def create_app(self) -> App:
-        if not self.model:
-            raise Exception("Model not initialized. Check API keys.")
-        
-        main_agent = Agent(
-            name="security_chatbot",
-            model=self.model,
-            instruction="""You are a security expert chatbot assistant.
-            Your role is to help users understand security concepts, assess risks,
-            and provide actionable security advice. Be clear, concise, and helpful."""
-        )
-        
-        app = App(
-            agent=main_agent,
-            app_name=self.config.app_name
-        )
-        
-        print(f"✅ App created: {self.config.app_name}")
-        return app
-    
-    def process_query(self, user_input: str) -> str:
-        if not self.conversational_agent:
-            return "Error: System not properly initialized."
-        
-        query_type = self.conversational_agent.classify_query(user_input)
-        print(f"📊 Query classified as: {query_type}")
-        
-        target_agent = self.conversational_agent.route_request(query_type, user_input)
-        print(f"🔀 Routing to: {target_agent}")
-        
-        if query_type == "risk_assessment":
-            result = self.risk_agent.assess_risk(user_input)
-            return self.report_agent.generate_security_report(result)
-        
-        elif query_type == "url_scan":
-            # Extract URL with improved handling
-            words = user_input.split()
-            url = None
-            for word in words:
-                word = word.strip('.,!?')
-                # If it has http/https, use it directly
-                if word.startswith('http://') or word.startswith('https://'):
-                    url = word
-                    break
-                # If it has a domain extension, add https://
-                elif '.' in word and any(ext in word for ext in ['.com', '.org', '.net', '.edu', '.gov', '.io', '.co', '.uk']):
-                    if len(word) > 4:
-                        url = f"https://{word}"
-                        break
-            
-            if url:
-                print(f"🔍 Scanning URL with VirusTotal: {url}")
-                scan_result = self.tool_agent.check_url(url)
-                
-                return self.report_agent.generate_security_report({
-                    "summary": f"URL scan completed for: {url}",
-                    "risk_level": scan_result.get('virustotal', 'UNKNOWN').upper(),
-                    "details": f"VirusTotal detections: {scan_result.get('detections', 0)}/{scan_result.get('total_scans', 0)}",
-                    "recommendations": self._get_url_recommendations(scan_result)
-                })
-            else:
-                return "Please provide a valid URL to scan. Example: Is https://example.com safe?"
-        
-        elif query_type == "file_scan":
-            return "File scanning requires a file hash. Please provide a SHA-256 hash to scan."
-        
-        elif query_type == "password_check":
-            # Extract password from user input
-            words = user_input.split()
-            password = None
-        
-            # Look for password after keywords
-            for i, word in enumerate(words):
-                if word.lower() in ['password', 'credential']:
-                    if i + 1 < len(words):
-                        # Get the word after "password" or "credential"
-                        password = words[i + 1].strip('.,!?"\'')
-                        break
-            
-            if password:
-                print(f"🔍 Checking password breach status with HIBP")
-                breach_result = self.tool_agent.check_password_breach(password)
-                
-                return self.report_agent.generate_security_report({
-                    "summary": f"Password breach check completed",
-                    "risk_level": "CRITICAL" if breach_result.get('breached') else "LOW",
-                    "details": breach_result.get('message', 'Check completed'),
-                    "recommendations": self._get_password_recommendations(breach_result)
-                })
-            else:
-                return "Please provide a password to check. Example: 'Check password Password123'"
-                
-        else:
-            # Knowledge query - use enhanced knowledge base
-            advice = self.knowledge_agent.get_security_advice(user_input)
-            
-            # Format the advice into a proper report
-            return self.report_agent.generate_security_report({
-                "term": advice.get('term', user_input),
-                "explanation": advice.get('explanation', advice.get('definition', '')),
-                "definition": advice.get('definition', ''),
-                "risk_level": "INFO",
-                "why_it_matters": advice.get('why_it_matters', 'Important for security'),
-                "recommendations": advice.get('recommendations', advice.get('best_practices', [])),
-                "related_concepts": advice.get('related_concepts', []),
-                "source": advice.get('source', 'Security Knowledge Base')
-            })
-    
-    def _get_url_recommendations(self, scan_result: Dict[str, Any]) -> List[str]:
-        """Generate recommendations based on URL scan results"""
-        status = scan_result.get('virustotal', 'unknown')
-        
-        if status == 'malicious':
-            return [
-                "⚠️ DO NOT visit this URL!",
-                "This URL has been flagged as malicious by multiple sources",
-                "Report this to your IT security team if received via email",
-                "Clear your browser cache if you already visited it"
-            ]
-        elif status == 'suspicious':
-            return [
-                "⚠️ Exercise extreme caution with this URL",
-                f"{scan_result.get('suspicious', 0)} scanners flagged it as suspicious",
-                "Verify the URL is from a legitimate trusted source",
-                "Consider using a sandbox environment if you must access it"
-            ]
-        elif status == 'clean':
-            return [
-                "✅ This URL appears safe based on current analysis",
-                "Still verify the domain matches what you expect",
-                "Use HTTPS connections when possible",
-                "Keep your browser and security software updated"
-            ]
-        elif status == 'scanning':
-            return [
-                "⏳ URL submitted for scanning",
-                "This URL was not previously scanned",
-                "Check back in a few moments for results",
-                "Exercise caution until results are available"
-            ]
-        else:
-            return [
-                "❌ Unable to complete scan",
-                "There may be an issue with the API or URL format",
-                "Try again or contact support if issue persists"
-            ]
-    def _get_password_recommendations(self, breach_result: Dict[str, Any]) -> List[str]:
-        """Generate recommendations based on password breach results"""
-        if breach_result.get('breached'):
-            breach_count = breach_result.get('breach_count', 0)
-            return [
-                f"⚠️ CRITICAL: This password appeared {breach_count:,} times in data breaches!",
-                "🚫 DO NOT use this password anywhere",
-                "Change it immediately on all accounts where you use it",
-                "Use a unique, randomly generated password instead",
-                "Consider using a password manager (1Password, Bitwarden, LastPass)",
-                "Enable two-factor authentication (2FA) on all accounts"
-            ]
-        else:
-            return [
-                "✅ This password hasn't been found in known breaches",
-                "Still ensure it's unique and not used on multiple sites",
-                "Use a mix of uppercase, lowercase, numbers, and symbols",
-                "Make it at least 12-16 characters long",
-                "Consider using a password manager for strong, unique passwords",
-                "Enable 2FA for extra security"
-            ]
-
-async def run_session(
-    runner_instance: Runner,
-    session_service: Any,
-    user_queries: List[str] | str,
-    session_name: str = "default",
-    user_id: str = "default_user"
-):
-    print(f"\n### Session: {session_name}")
-    
-    app_name = runner_instance.app_name
-    
-    try:
-        session = await session_service.create_session(
-            app_name=app_name,
-            user_id=user_id,
-            session_id=session_name
-        )
-    except:
-        session = await session_service.get_session(
-            app_name=app_name,
-            user_id=user_id,
-            session_id=session_name
-        )
-    
-    if user_queries:
-        if isinstance(user_queries, str):
-            user_queries = [user_queries]
-        
-        for query in user_queries:
-            print(f"\nUser > {query}")
-            
-            query_content = types.Content(
-                role="user",
-                parts=[types.Part(text=query)]
-            )
-            
-            async for event in runner_instance.run_async(
-                user_id=user_id,
-                session_id=session.id,
-                new_message=query_content
-            ):
-                if event.content and event.content.parts:
-                    text = event.content.parts[0].text
-                    if text and text != "None":
-                        print(f"Agent > {text}")
-    else:
-        print("No queries provided!")
-
-def main():
-    print("=" * 70)
-    print("SECURITY CHATBOT - AI AGENT SYSTEM with NIST GLOSSARY")
-    print("=" * 70)
-    
-    setup_api_keys()
-    
-    # Check if Google API key is available
-    if not os.environ.get("GOOGLE_API_KEY"):
-        print("\n❌ GOOGLE_API_KEY is required to run the chatbot.")
-        print("Please set it using: export GOOGLE_API_KEY='your_key_here'")
-        print("\nOr create a .env file with:")
-        print("GOOGLE_API_KEY=your_key_here")
-        return
-    
-    # Create the system object
-    try:
-        system = SecurityChatbotSystem(config)
-        system.setup_session_service(use_database=False)
-    except Exception as e:
-        print(f"\n❌ Failed to initialize system: {e}")
-        print("\nPlease check your GOOGLE_API_KEY is valid.")
-        return
-    
-    print("\n" + "=" * 70)
-    print("TESTING ENHANCED AGENT SYSTEM")
-    print("=" * 70)
-    
-    test_queries = [
-        "What is two-factor authentication?",
-        "Tell me about encryption",
-        "I want to share my password with a coworker",
-        "Is it safe to click this link: http://testphp.vulnweb.com/",
-        "What is a firewall?",
-        "Explain ransomware protection"
-    ]
-    
-    for query in test_queries:
-        print(f"\n{'=' * 70}")
-        print(f"📝 Query: {query}")
-        print('=' * 70)
-        response = system.process_query(query)
-        print(response)
-        print()
-    
-    # NEW: Test NIST glossary specifically
-    print("\n" + "=" * 70)
-    print("TESTING NIST GLOSSARY INTEGRATION")
-    print("=" * 70)
-    print("\n🔍 Searching for technical terms in NIST glossary...")
-    
-    if system.knowledge_agent.load_nist_glossary():
-        print("✅ NIST Glossary loaded successfully!")
-        print(f"📊 Total terms available: {len(system.knowledge_agent.nist_glossary)}")
-        
-        nist_test_queries = [
-            "What is OAuth?",
-            "Define API",
-            "What is TLS?"
-        ]
-        
-        for query in nist_test_queries:
-            print(f"\n📝 Query: {query}")
-            response = system.process_query(query)
-            print(response)
-
-def create_root_agent():
-    print("\n🌐 Creating root agent for ADK Web UI...")
-    
-    if not setup_api_keys():
-        print("⚠️ Warning: API keys not configured")
-        try:
-            return Agent(
-                name="security_chatbot",
-                model=Gemini(model_name="gemini-2.5-flash"),
-                instruction="⚠️ Error: GOOGLE_API_KEY not configured. Please set your API key."
-            )
-        except:
-            return None
-    
-    system = SecurityChatbotSystem(config)
-    system.setup_session_service(use_database=False)
-    
-    main_agent = Agent(
-        name="security_chatbot",
-        model=system.model,
-        instruction="""You are a Security Expert Chatbot Assistant with real-time threat detection capabilities.
+    SYSTEM_INSTRUCTION = """You are a Security Expert Chatbot Assistant with real-time threat detection capabilities.
 
 Your Capabilities:
 - Answer questions about security concepts (passwords, encryption, 2FA, VPNs, etc.)
 - Assess security risks in user scenarios
 - Scan URLs using VirusTotal API for malware and phishing detection
+- Check passwords against Have I Been Pwned database (600M+ breached passwords)
+- Access NIST Cybersecurity Glossary (3,000+ authoritative security terms)
 - Provide best practices for data protection
-- Explain compliance requirements (GDPR, HIPAA, SOC2)
+- Explain compliance requirements (GDPR, HIPAA, SOC2, PCI-DSS)
 - Guide users on secure coding practices
 - Help with incident response planning
 
@@ -882,32 +484,146 @@ Your Approach:
 - When assessing risks, explain both likelihood and impact
 - Always recommend the most secure option, but provide alternatives
 - For URL scans, provide detailed threat analysis from VirusTotal
+- For password checks, provide specific breach exposure data
+- For security concepts, reference authoritative NIST definitions
 
 Security Topics You Cover:
-- Password management and authentication
-- Network security (firewalls, VPNs, zero-trust)
-- Data encryption and hashing
-- Phishing and social engineering
-- Malware detection and analysis
-- Secure software development
-- Cloud security (AWS, Azure, GCP)
-- Compliance and regulations
-- Incident response
-- Security awareness training
+- Password management and authentication (MFA, passwordless, biometrics)
+- Network security (firewalls, VPNs, zero-trust architecture, network segmentation)
+- Data encryption and hashing (AES, RSA, SHA-256, TLS/SSL)
+- Phishing and social engineering (recognition, prevention, reporting)
+- Malware detection and analysis (viruses, ransomware, trojans, spyware)
+- Secure software development (OWASP Top 10, secure SDLC, code reviews)
+- Cloud security (AWS, Azure, GCP, shared responsibility model)
+- Compliance and regulations (GDPR, HIPAA, SOC2, ISO 27001)
+- Incident response (detection, containment, eradication, recovery)
+- Security awareness training (human factor, security culture)
 
-Special Features:
-- Real-time URL scanning with VirusTotal
-- Multi-engine malware detection
-- Threat intelligence from 70+ security vendors
+Special Features & Tools:
+- Real-time URL scanning with VirusTotal (70+ security vendors)
+- Multi-engine malware detection and threat intelligence
+- Password breach checking via Have I Been Pwned (k-Anonymity protocol)
+- NIST Cybersecurity Glossary integration for authoritative definitions
+- Professional security reports with risk levels and actionable recommendations
 
-Remember: Security is about balancing protection with usability. Help users make informed decisions!"""
-    )
+Response Guidelines:
+- For general questions: Be conversational and friendly (2-3 sentences)
+- For password checks: Generate detailed PASSWORD SAFETY REPORT
+- For URL scans: Generate detailed URL SAFETY REPORT  
+- For security definitions: Generate SECURITY KNOWLEDGE REPORT with NIST data
+- Always prioritize user safety and provide actionable next steps
+
+Remember: Security is about balancing protection with usability. Help users make informed decisions while maintaining a friendly, approachable tone!"""
+
+    def __init__(self, config: SecurityConfig):
+        self.config = config
+        
+        if not GENAI_AVAILABLE:
+            print("❌ Google Generative AI not available")
+            self.model = None
+        else:
+            api_key = os.environ.get('GOOGLE_API_KEY')
+            if not api_key:
+                print("❌ GOOGLE_API_KEY not set")
+                self.model = None
+            else:
+                try:
+                    genai.configure(api_key=api_key)
+                    self.model = genai.GenerativeModel(
+                        model_name=config.model_name,
+                        system_instruction=self.SYSTEM_INSTRUCTION
+                    )
+                    print(f"✅ Model initialized: {config.model_name}")
+                except Exception as e:
+                    print(f"❌ Failed to initialize model: {e}")
+                    self.model = None
+        
+        self.main_agent = MainConversationalAgent(self.model)
+        self.password_agent = PasswordSafetyAgent()
+        self.url_agent = URLSafetyAgent(config)
+        self.knowledge_agent = SecurityKnowledgeAgent(self.model)
+        self.report_generator = ReportGenerator()
+        
+        print("✅ All agents initialized successfully.")
+        print("🎯 HYBRID MODE: Keywords for routing (saves API calls)")
     
-    print("✅ Root agent created successfully!")
-    return main_agent
+    def process_query(self, user_input: str) -> str:
+        """
+        HYBRID: Use keywords for routing (no API call)
+        Only use AI for generating responses (1 API call instead of 2)
+        """
+        
+        user_lower = user_input.lower()
+        
+        # ===================================================================
+        # KEYWORD ROUTING (No API call - saves quota!)
+        # ===================================================================
+        
+        # 1. PASSWORD CHECK
+        if any(keyword in user_lower for keyword in ['check password', 'password safe', 'password pwned', 'password breached', 'password secure']):
+            print("🔐 TRIGGERED: Password Safety Agent (no AI call for routing)")
+            password = self._extract_password(user_input)
+            if password:
+                result = self.password_agent.check_password(password)
+                return self.report_generator.generate_password_report(result)
+            else:
+                return "Please provide a password to check. Example: 'Check password MyPassword123'"
+        
+        # 2. URL CHECK
+        if any(keyword in user_lower for keyword in ['check url', 'check link', 'url safe', 'link safe', 'scan url', 'scan link', 'check website']):
+            print("🌐 TRIGGERED: URL Safety Agent (no AI call for routing)")
+            url = self._extract_url(user_input)
+            if url:
+                result = self.url_agent.check_url(url)
+                return self.report_generator.generate_url_report(url, result)
+            else:
+                return "Please provide a URL to check. Example: 'Check URL https://example.com'"
+        
+        # 3. KNOWLEDGE QUERY
+        if any(keyword in user_lower for keyword in ['what is', 'define', 'explain']):
+            print("📚 TRIGGERED: Knowledge Agent (no AI call for routing)")
+            try:
+                ai_response = self.model.generate_content(user_input)  # Only 1 AI call here
+                knowledge = self.knowledge_agent.get_security_knowledge(user_input)
+                knowledge['explanation'] = ai_response.text
+                return self.report_generator.generate_knowledge_report(knowledge)
+            except Exception as e:
+                print(f"Error: {e}")
+                knowledge = self.knowledge_agent.get_security_knowledge(user_input)
+                return self.report_generator.generate_knowledge_report(knowledge)
+        
+        # 4. DEFAULT: CONVERSATION
+        print("💬 Using: Main Conversational Agent (1 AI call only)")
+        return self.main_agent.respond(user_input)  # Only 1 AI call here
+    
+    def _extract_password(self, text: str) -> Optional[str]:
+        """Extract password from user input"""
+        words = text.split()
+        for i, word in enumerate(words):
+            if word.lower() in ['password', 'credential']:
+                if i + 1 < len(words):
+                    return words[i + 1].strip('.,!?"\'')
+        return None
+    
+    def _extract_url(self, text: str) -> Optional[str]:
+        """Extract URL from user input"""
+        words = text.split()
+        for word in words:
+            word = word.strip('.,!?')
+            if word.startswith('http://') or word.startswith('https://'):
+                return word
+            elif '.' in word and any(ext in word for ext in ['.com', '.org', '.net', '.edu', '.gov', '.io']):
+                if len(word) > 4:
+                    return f"https://{word}"
+        return None
 
-
-root_agent = create_root_agent()
+root_agent = None
 
 if __name__ == "__main__":
-    main()
+    print("=" * 70)
+    print("SECURITY CHATBOT - HYBRID MODE (API OPTIMIZED)")
+    print("=" * 70)
+    print("\n✅ Keywords for routing (saves 50% API calls)")
+    print("✅ AI only for responses (gemini-2.5-flash: 20/day free)")
+    print("⚠️  Hybrid mode: 1 call per message (20 messages/day max)")
+    print("\n" + "=" * 70)
