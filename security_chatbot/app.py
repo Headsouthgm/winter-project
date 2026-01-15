@@ -35,13 +35,12 @@ def chatbot_page():
     """Chatbot interface page"""
     # Check if API keys are set
     google_key = session.get('google_api_key') or os.environ.get('GOOGLE_API_KEY')
-    virustotal_key = session.get('virustotal_api_key') or os.environ.get('VIRUSTOTAL_API_KEY')
     
+    # If no Google API key, show warning page instead of chatbot
     if not google_key:
-        return render_template('api_warning.html', 
-                             missing_keys=['Google API Key'],
-                             redirect_to='chatbot')
+        return render_template('api_key_warning.html')
     
+    # API key exists, show chatbot
     return render_template('chatbot.html')
 
 @app.route('/api-keys')
@@ -117,9 +116,19 @@ def chat():
     if not user_message:
         return jsonify({'error': 'No message provided'}), 400
     
-    # Check if API key is set
-    if not (session.get('google_api_key') or os.environ.get('GOOGLE_API_KEY')):
-        return jsonify({'error': 'Google API Key not configured'}), 403
+    # ===================================================================
+    # CHECK IF API KEY IS CONFIGURED
+    # ===================================================================
+    google_key = session.get('google_api_key') or os.environ.get('GOOGLE_API_KEY')
+    
+    if not google_key:
+        return jsonify({
+            'error': 'Google API Key not configured',
+            'error_type': 'missing_api_key',
+            'message': '⚠️ API Key Required\n\nPlease configure your Google API Key before using the chatbot.',
+            'redirect_url': '/api-keys',
+            'success': False
+        }), 403
     
     try:
         # Get chatbot instance
