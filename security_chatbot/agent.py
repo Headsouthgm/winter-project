@@ -377,15 +377,18 @@ class ReportGenerator:
     def __init__(self):
         self.name = "Report Generator"
     
-    def generate_password_report(self, result: Dict[str, Any]) -> str:
+    def generate_password_report(self, result: Dict[str, Any], password: str = None) -> str:
         """Generate password safety report"""
         recs = '\n'.join(f"  • {rec}" for rec in result.get('recommendations', []))
+        
+        # Add which password was checked
+        password_checked = f"\n    Password Checked: \"{password}\"\n" if password else ""
         
         return f"""
     {'=' * 70}
     PASSWORD SAFETY REPORT
     {'=' * 70}
-
+{password_checked}
     Status: {"✅ SAFE" if result.get('safe') else "⚠️ UNSAFE"}
     Risk Level: {result.get('risk_level', 'UNKNOWN')}
     
@@ -412,7 +415,8 @@ class ReportGenerator:
     URL SAFETY REPORT
     {'=' * 70}
 
-    URL: {url}
+    URL Checked: {url}
+    
     Status: {"✅ SAFE" if result.get('safe') else "⚠️ UNSAFE"}
     Risk Level: {result.get('risk_level', 'UNKNOWN')}
     
@@ -430,7 +434,7 @@ class ReportGenerator:
     {'=' * 70}
         """
     
-    def generate_knowledge_report(self, findings: Dict[str, Any]) -> str:
+    def generate_knowledge_report(self, findings: Dict[str, Any], topic: str = None) -> str:
         """Generate security knowledge report with only Topic, Definition, Why It Matters, and Application"""
         
         applications = findings.get('recommendations', findings.get('best_practices', []))
@@ -439,12 +443,15 @@ class ReportGenerator:
         else:
             app_text = f"  • {str(applications)}"
         
+        # Use provided topic or fallback to findings
+        topic_display = topic if topic else findings.get('term', 'Security Information')
+        
         return f"""
     {'=' * 70}
     SECURITY KNOWLEDGE REPORT
     {'=' * 70}
 
-    Topic: {findings.get('term', 'Security Information')}
+    Topic Explained: {topic_display}
 
     Definition:
     {findings.get('explanation', findings.get('definition', 'Information not available'))}
@@ -564,37 +571,110 @@ Remember: Security is about balancing protection with usability. Help users make
             print("🔐 TRIGGERED: Password Safety Agent (no AI call for routing)")
             password = self._extract_password(user_input)
             if password:
-                result = self.password_agent.check_password(password)
-                return self.report_generator.generate_password_report(result)
+                # ✅ CONFIRMATION STEP: Ask user to confirm the password
+                return {
+                    'type': 'confirmation',
+                    'action': 'password_check',
+                    'data': password,
+                    'message': f"""I understand you want to check if a password is safe. 
+
+I detected the password: "{password}"
+
+Is this correct? If yes, I'll check it against the Have I Been Pwned database (600M+ breached passwords) to see if it has been exposed in any data breaches.
+
+⚠️ Important: For security, never share passwords you actually use. Only check passwords you're considering using or want to test.
+
+Reply "yes" to proceed with the check, or provide the correct password if this isn't what you meant."""
+                }
             else:
-                return "Please provide a password to check. Example: 'Check password MyPassword123'"
+                return {
+                    'type': 'response',
+                    'message': """I understand you want to check if a password is safe! 
+
+Please provide the password you'd like me to check. For example:
+- "Check password MyPassword123"
+- "Is Password123 safe?"
+
+⚠️ Security reminder: Only share test passwords or passwords you're considering. Never share passwords you're currently using on real accounts!"""
+                }
         
         # 2. URL CHECK
         if any(keyword in user_lower for keyword in ['check url', 'check link', 'url safe', 'link safe', 'scan url', 'scan link', 'check website']):
             print("🌐 TRIGGERED: URL Safety Agent (no AI call for routing)")
             url = self._extract_url(user_input)
             if url:
-                result = self.url_agent.check_url(url)
-                return self.report_generator.generate_url_report(url, result)
+                # ✅ CONFIRMATION STEP: Ask user to confirm the URL
+                return {
+                    'type': 'confirmation',
+                    'action': 'url_check',
+                    'data': url,
+                    'message': f"""I understand you want to check if a URL is safe!
+
+I detected the URL: {url}
+
+Is this correct? If yes, I'll scan it using VirusTotal (70+ security vendors) to check for:
+- Malware and viruses
+- Phishing attempts
+- Malicious scripts
+- Known threats
+
+Reply "yes" to proceed with the scan, or provide the correct URL if this isn't what you meant."""
+                }
             else:
-                return "Please provide a URL to check. Example: 'Check URL https://example.com'"
+                return {
+                    'type': 'response',
+                    'message': """I understand you want to check if a URL is safe!
+
+Please provide the URL you'd like me to scan. For example:
+- "Check URL https://example.com"
+- "Is google.com safe?"
+- "Scan this link: test.com"
+
+I'll use VirusTotal to scan it with 70+ security vendors."""
+                }
         
         # 3. KNOWLEDGE QUERY
         if any(keyword in user_lower for keyword in ['what is', 'define', 'explain']):
             print("📚 TRIGGERED: Knowledge Agent (no AI call for routing)")
-            try:
-                ai_response = self.model.generate_content(user_input)  # Only 1 AI call here
-                knowledge = self.knowledge_agent.get_security_knowledge(user_input)
-                knowledge['explanation'] = ai_response.text
-                return self.report_generator.generate_knowledge_report(knowledge)
-            except Exception as e:
-                print(f"Error: {e}")
-                knowledge = self.knowledge_agent.get_security_knowledge(user_input)
-                return self.report_generator.generate_knowledge_report(knowledge)
+            
+            # Extract the topic they want to learn about
+            topic = self._extract_topic(user_input)
+            
+            if topic:
+                # ✅ CONFIRMATION STEP: Show what will be explained
+                return {
+                    'type': 'confirmation',
+                    'action': 'knowledge_query',
+                    'data': topic,
+                    'message': f"""I understand you want to learn about "{topic}"!
+
+I'll provide you with:
+- A clear definition from the NIST Cybersecurity Glossary (if available)
+- Why this concept matters for security
+- Practical applications and best practices
+
+Reply "yes" to get the detailed security knowledge report, or clarify if you meant something else."""
+                }
+            else:
+                return {
+                    'type': 'response',
+                    'message': """I'd be happy to explain a security concept!
+
+Please let me know what you'd like to learn about. For example:
+- "What is two-factor authentication?"
+- "Define encryption"
+- "Explain VPN"
+
+I'll provide a comprehensive explanation with practical applications!"""
+                }
         
         # 4. DEFAULT: CONVERSATION
         print("💬 Using: Main Conversational Agent (1 AI call only)")
-        return self.main_agent.respond(user_input)  # Only 1 AI call here
+        response_text = self.main_agent.respond(user_input)  # Only 1 AI call here
+        return {
+            'type': 'response',
+            'message': response_text
+        }
     
     def _extract_password(self, text: str) -> Optional[str]:
         """Extract password from user input"""
@@ -616,6 +696,133 @@ Remember: Security is about balancing protection with usability. Help users make
                 if len(word) > 4:
                     return f"https://{word}"
         return None
+    
+    def _extract_topic(self, text: str) -> Optional[str]:
+        """Extract topic from knowledge query"""
+        text_lower = text.lower()
+        
+        # Remove common question words
+        for phrase in ['what is', 'define', 'explain', 'tell me about', 'what are']:
+            if phrase in text_lower:
+                topic = text_lower.split(phrase, 1)[1].strip()
+                # Clean up punctuation
+                topic = topic.strip('?,!.')
+                if topic:
+                    return topic
+        
+        return None
+    
+    def handle_confirmation(self, user_input: str, action_type: str, data: str) -> Dict[str, Any]:
+        """
+        Handle user confirmation responses
+        
+        Args:
+            user_input: User's response (e.g., "yes", "no", "actually it's xyz")
+            action_type: Type of action ('password_check', 'url_check', 'knowledge_query')
+            data: The password/URL/topic to process
+        
+        Returns:
+            Dict with 'type' and 'message' keys
+        """
+        user_lower = user_input.lower().strip()
+        
+        # Check if user confirmed with "yes"
+        if user_lower in ['yes', 'y', 'yeah', 'yep', 'yup', 'sure', 'ok', 'okay', 'confirm', 'proceed', 'go ahead']:
+            if action_type == 'password_check':
+                print(f"✅ Password confirmed: {data}")
+                result = self.password_agent.check_password(data)
+                return {
+                    'type': 'response',
+                    'message': self.report_generator.generate_password_report(result, password=data)
+                }
+            
+            elif action_type == 'url_check':
+                print(f"✅ URL confirmed: {data}")
+                result = self.url_agent.check_url(data)
+                return {
+                    'type': 'response',
+                    'message': self.report_generator.generate_url_report(data, result)
+                }
+            
+            elif action_type == 'knowledge_query':
+                print(f"✅ Topic confirmed: {data}")
+                try:
+                    ai_response = self.model.generate_content(f"Explain {data} in the context of cybersecurity")
+                    knowledge = self.knowledge_agent.get_security_knowledge(data)
+                    knowledge['explanation'] = ai_response.text
+                    return {
+                        'type': 'response',
+                        'message': self.report_generator.generate_knowledge_report(knowledge, topic=data)
+                    }
+                except Exception as e:
+                    print(f"Error: {e}")
+                    knowledge = self.knowledge_agent.get_security_knowledge(data)
+                    return {
+                        'type': 'response',
+                        'message': self.report_generator.generate_knowledge_report(knowledge, topic=data)
+                    }
+        
+        # User said "no" or provided a correction
+        else:
+            # ✅ IMMEDIATE CORRECTION: User is providing the correct value
+            print(f"🔄 User corrected from '{data}' to '{user_input}'")
+            
+            if action_type == 'password_check':
+                # Extract corrected password
+                corrected = self._extract_password(user_input)
+                if not corrected:
+                    # If no "password" keyword, treat entire message as the password
+                    corrected = user_input.strip()
+                
+                print(f"✅ Checking corrected password: {corrected}")
+                result = self.password_agent.check_password(corrected)
+                return {
+                    'type': 'response',
+                    'message': self.report_generator.generate_password_report(result, password=corrected)
+                }
+            
+            elif action_type == 'url_check':
+                # Extract corrected URL
+                corrected = self._extract_url(user_input)
+                if not corrected:
+                    # Try treating the message as a URL
+                    if 'http' in user_input or '.' in user_input:
+                        corrected = user_input.strip()
+                        if not corrected.startswith('http'):
+                            corrected = f"https://{corrected}"
+                    else:
+                        return {
+                            'type': 'response',
+                            'message': "I couldn't detect a valid URL. Please provide the URL you want to check. For example: 'https://example.com' or 'google.com'"
+                        }
+                
+                print(f"✅ Checking corrected URL: {corrected}")
+                result = self.url_agent.check_url(corrected)
+                return {
+                    'type': 'response',
+                    'message': self.report_generator.generate_url_report(corrected, result)
+                }
+            
+            elif action_type == 'knowledge_query':
+                # Use the entire message as the corrected topic
+                corrected = user_input.strip()
+                
+                print(f"✅ Explaining corrected topic: {corrected}")
+                try:
+                    ai_response = self.model.generate_content(f"Explain {corrected} in the context of cybersecurity")
+                    knowledge = self.knowledge_agent.get_security_knowledge(corrected)
+                    knowledge['explanation'] = ai_response.text
+                    return {
+                        'type': 'response',
+                        'message': self.report_generator.generate_knowledge_report(knowledge, topic=corrected)
+                    }
+                except Exception as e:
+                    print(f"Error: {e}")
+                    knowledge = self.knowledge_agent.get_security_knowledge(corrected)
+                    return {
+                        'type': 'response',
+                        'message': self.report_generator.generate_knowledge_report(knowledge, topic=corrected)
+                    }
 
 root_agent = None
 

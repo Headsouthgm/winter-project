@@ -1,20 +1,29 @@
 """
 Security Chatbot Web Application
 Flask-based custom UI with API key management, chatbot, guide, and fun facts
+WITH CONFIRMATION STEP SUPPORT
 """
 
 from flask import Flask, render_template, request, jsonify, session
 from flask_cors import CORS
 import os
 import requests
+import secrets
 from agent import SecurityChatbotSystem, config
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)  # For session management
+app.secret_key = secrets.token_hex(16)  # Required for session management
 CORS(app)
 
-# Store API keys in session (in production, use a database)
-API_KEYS_STORE = {}
+# Global chatbot instance (persistent)
+chatbot_instance = None
+
+def get_chatbot():
+    """Get or create chatbot instance"""
+    global chatbot_instance
+    if chatbot_instance is None:
+        chatbot_instance = SecurityChatbotSystem(config)
+    return chatbot_instance
 
 @app.route('/')
 def index():
@@ -101,7 +110,7 @@ def validate_keys():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """Handle chat messages"""
+    """Handle chat messages with confirmation support"""
     data = request.json
     user_message = data.get('message', '')
     
@@ -113,18 +122,63 @@ def chat():
         return jsonify({'error': 'Google API Key not configured'}), 403
     
     try:
-        # Initialize the chatbot system
-        chatbot = SecurityChatbotSystem(config)
+        # Get chatbot instance
+        chatbot = get_chatbot()
         
-        # Process the query
-        response = chatbot.process_query(user_message)
+        # ===================================================================
+        # CHECK IF WAITING FOR CONFIRMATION
+        # ===================================================================
+        if 'pending_action' in session:
+            action_type = session['pending_action']['type']
+            action_data = session['pending_action']['data']
+            
+            print(f"🔄 Processing confirmation for {action_type}: {action_data}")
+            
+            # Handle confirmation
+            result = chatbot.handle_confirmation(user_message, action_type, action_data)
+            
+            # Clear pending action from session
+            session.pop('pending_action', None)
+            
+            return jsonify({
+                'response': result['message'],
+                'success': True
+            })
+        
+        # ===================================================================
+        # NORMAL QUERY PROCESSING
+        # ===================================================================
+        result = chatbot.process_query(user_message)
+        
+        # Check if result is a confirmation request
+        if isinstance(result, dict) and result.get('type') == 'confirmation':
+            # Store pending action in session
+            session['pending_action'] = {
+                'type': result['action'],
+                'data': result['data']
+            }
+            print(f"💾 Stored pending action: {result['action']} -> {result['data']}")
+            
+            return jsonify({
+                'response': result['message'],
+                'success': True,
+                'awaiting_confirmation': True
+            })
+        
+        # Normal response (dict with 'message' key or plain string for backward compatibility)
+        if isinstance(result, dict):
+            response_text = result.get('message', str(result))
+        else:
+            response_text = result
         
         return jsonify({
-            'response': response,
+            'response': response_text,
             'success': True
         })
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': f'Error processing message: {str(e)}',
             'success': False
@@ -166,15 +220,19 @@ def check_answer():
 
 if __name__ == '__main__':
     print("=" * 70)
-    print("🚀 SECURITY CHATBOT WEB UI")
+    print("🚀 SECURITY CHATBOT WEB UI - WITH CONFIRMATION SUPPORT")
     print("=" * 70)
     print("\n📍 Starting server at: http://localhost:5000")
     print("\n✨ Features:")
     print("  • Custom Web Interface")
     print("  • API Key Management")
-    print("  • Interactive Chatbot")
+    print("  • Interactive Chatbot with Confirmation Steps")
     print("  • Tutorial Guide")
     print("  • Fun Facts Quiz")
+    print("\n🔄 Confirmation Flow:")
+    print("  • Password checks: Confirm before checking")
+    print("  • URL scans: Confirm before scanning")
+    print("  • Knowledge queries: Confirm before generating report")
     print("\n" + "=" * 70)
     
     app.run(debug=True, host='0.0.0.0', port=5000)
