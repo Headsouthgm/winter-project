@@ -5,129 +5,471 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fun Facts - Security Quiz</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .quiz-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .question-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .question-card h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .option-btn {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: left;
+            width: 100%;
+        }
+
+        .option-btn:hover:not(:disabled) {
+            border-color: #667eea;
+            background: #f8f9ff;
+            transform: translateX(5px);
+        }
+
+        .option-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        .option-letter {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background: #f0f0f0;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+
+        .option-text {
+            flex: 1;
+            line-height: 1.5;
+        }
+
+        .option-btn.correct {
+            border-color: #4caf50;
+            background: #e8f5e9;
+        }
+
+        .option-btn.correct .option-letter {
+            background: #4caf50;
+            color: white;
+        }
+
+        .option-btn.incorrect {
+            border-color: #f44336;
+            background: #ffebee;
+        }
+
+        .option-btn.incorrect .option-letter {
+            background: #f44336;
+            color: white;
+        }
+
+        .result-message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .success-result {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+        }
+
+        .error-result {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+        }
+
+        .quiz-score {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .quiz-footer {
+            text-align: center;
+            padding: 30px;
+            color: #666;
+        }
+
+        .quiz-footer a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .quiz-footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <div class="quiz-container">
             <button class="back-button" onclick="location.href='/'">← Back to Home</button>
             
-            <h1>🎯 Fun Facts Quiz</h1>
-            <p class="subtitle">Test your data security knowledge!</p>
+            <h1>🎯 Data Security Quiz</h1>
+            <p class="subtitle">Test your cybersecurity knowledge!</p>
 
-            <!-- Question 1: Example Question -->
-            <div class="question-card" id="question-1">
+            <div class="quiz-score" id="scoreDisplay">
+                Score: <span id="score">0</span> / <span id="total">10</span>
+            </div>
+
+            <!-- Question 1: Passkeys -->
+            <div class="question-card">
                 <h3>Question 1: What is a Passkey?</h3>
-                
                 <div class="options">
                     <button class="option-btn" onclick="selectAnswer('q1', 'A', this)">
                         <span class="option-letter">A</span>
                         <span class="option-text">A physical key used to unlock computers</span>
                     </button>
-                    
                     <button class="option-btn" onclick="selectAnswer('q1', 'B', this)">
                         <span class="option-letter">B</span>
                         <span class="option-text">A FIDO2 credential that replaces passwords with biometric or device-based authentication</span>
                     </button>
-                    
                     <button class="option-btn" onclick="selectAnswer('q1', 'C', this)">
                         <span class="option-letter">C</span>
                         <span class="option-text">A master password that unlocks all your accounts</span>
                     </button>
-                    
                     <button class="option-btn" onclick="selectAnswer('q1', 'D', this)">
                         <span class="option-letter">D</span>
                         <span class="option-text">A temporary password sent via email</span>
                     </button>
                 </div>
-                
                 <div id="result-q1" class="result-message"></div>
             </div>
 
-            <!-- More questions can be added here -->
+            <!-- Question 2: Encryption -->
+            <div class="question-card">
+                <h3>Question 2: What is the primary purpose of encryption?</h3>
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q2', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">To compress data and save storage space</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q2', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">To convert data into unreadable format to protect confidentiality</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q2', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">To speed up data transmission</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q2', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">To delete data permanently</span>
+                    </button>
+                </div>
+                <div id="result-q2" class="result-message"></div>
+            </div>
+
+            <!-- Question 3: Phishing -->
+            <div class="question-card">
+                <h3>Question 3: What is phishing?</h3>
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q3', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">A type of computer virus that destroys files</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q3', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">A fraudulent attempt to obtain sensitive information by disguising as a trustworthy entity</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q3', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">A legitimate marketing email campaign</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q3', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">A method to increase internet speed</span>
+                    </button>
+                </div>
+                <div id="result-q3" class="result-message"></div>
+            </div>
+
+            <!-- Question 4: Two-Factor Authentication -->
+            <div class="question-card">
+                <h3>Question 4: What does two-factor authentication (2FA) require?</h3>
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q4', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">Two different passwords</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q4', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">Two forms of identification (e.g., password + code from phone)</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q4', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">Logging in twice to confirm identity</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q4', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">Two different email addresses</span>
+                    </button>
+                </div>
+                <div id="result-q4" class="result-message"></div>
+            </div>
+
+            <!-- Question 5: VPN -->
+            <div class="question-card">
+                <h3>Question 5: What does a VPN (Virtual Private Network) do?</h3>
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q5', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">Increases internet speed dramatically</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q5', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">Encrypts your internet connection and hides your IP address</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q5', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">Blocks all viruses automatically</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q5', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">Provides free unlimited data</span>
+                    </button>
+                </div>
+                <div id="result-q5" class="result-message"></div>
+            </div>
+
+            <!-- Question 6: Password Strength -->
+            <div class="question-card">
+                <h3>Question 6: Which password is the STRONGEST?</h3>
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q6', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">password123</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q6', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">MyName2024</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q6', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">Tr0ub4dor&3</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q6', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">X9$mK2#pL8@vN4qR</span>
+                    </button>
+                </div>
+                <div id="result-q6" class="result-message"></div>
+            </div>
+
+            <!-- Question 7: Malware -->
+            <div class="question-card">
+                <h3>Question 7: What is ransomware?</h3>
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q7', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">Software that offers free trials</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q7', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">Malware that encrypts your files and demands payment to decrypt them</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q7', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">A legitimate backup service</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q7', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">A type of antivirus software</span>
+                    </button>
+                </div>
+                <div id="result-q7" class="result-message"></div>
+            </div>
+
+            <!-- Question 8: HTTPS -->
+            <div class="question-card">
+                <h3>Question 8: What does the "S" in HTTPS stand for?</h3>
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q8', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">Simple</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q8', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">Secure</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q8', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">System</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q8', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">Server</span>
+                    </button>
+                </div>
+                <div id="result-q8" class="result-message"></div>
+            </div>
+
+            <!-- Question 9: Data Breach -->
+            <div class="question-card">
+                <h3>Question 9: What should you do FIRST if you suspect a data breach?</h3>
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q9', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">Wait and see if anything happens</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q9', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">Change passwords immediately and enable 2FA</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q9', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">Delete your account</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q9', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">Share the information on social media</span>
+                    </button>
+                </div>
+                <div id="result-q9" class="result-message"></div>
+            </div>
+
+            <!-- Question 10: Public WiFi -->
+            <div class="question-card">
+                <h3>Question 10: Why is using public WiFi risky?</h3>
+                <div class="options">
+                    <button class="option-btn" onclick="selectAnswer('q10', 'A', this)">
+                        <span class="option-letter">A</span>
+                        <span class="option-text">It's slower than home WiFi</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q10', 'B', this)">
+                        <span class="option-letter">B</span>
+                        <span class="option-text">Attackers can intercept unencrypted data on public networks</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q10', 'C', this)">
+                        <span class="option-letter">C</span>
+                        <span class="option-text">It costs money to use</span>
+                    </button>
+                    <button class="option-btn" onclick="selectAnswer('q10', 'D', this)">
+                        <span class="option-letter">D</span>
+                        <span class="option-text">It requires special software</span>
+                    </button>
+                </div>
+                <div id="result-q10" class="result-message"></div>
+            </div>
+
             <div class="quiz-footer">
-                <p>More questions coming soon...</p>
+                <p><strong>Great job completing the quiz!</strong></p>
+                <p>Want to learn more? Try our <a href="/chatbot">Security Chatbot</a>!</p>
             </div>
         </div>
     </div>
 
     <script>
         let selectedQuestions = {};
+        let score = 0;
+        let totalQuestions = 10;
+
+        // Correct answers
+        const correctAnswers = {
+            'q1': 'B', 'q2': 'B', 'q3': 'B', 'q4': 'B', 'q5': 'B',
+            'q6': 'D', 'q7': 'B', 'q8': 'B', 'q9': 'B', 'q10': 'B'
+        };
+
+        // Explanations
+        const explanations = {
+            'q1': 'A passkey is a FIDO2 credential that replaces passwords with biometric or device-based authentication, making login more secure and convenient.',
+            'q2': 'Encryption converts data into an unreadable format that can only be decoded with the correct key, protecting data confidentiality.',
+            'q3': 'Phishing is a social engineering attack where attackers impersonate legitimate entities to steal sensitive information like passwords and credit card numbers.',
+            'q4': 'Two-factor authentication requires two different forms of identification: something you know (password) and something you have (phone code) or something you are (biometric).',
+            'q5': 'A VPN encrypts your internet connection and masks your IP address, providing privacy and security, especially on public networks.',
+            'q6': 'X9$mK2#pL8@vN4qR is the strongest because it\'s long (16 characters), random, and contains uppercase, lowercase, numbers, and special characters.',
+            'q7': 'Ransomware is malicious software that encrypts your files and demands payment (ransom) to restore access. It\'s one of the most damaging types of cyberattacks.',
+            'q8': 'HTTPS stands for "Hypertext Transfer Protocol Secure" - the S means the connection between your browser and the website is encrypted.',
+            'q9': 'If you suspect a breach, immediately change passwords, enable 2FA, and monitor accounts for suspicious activity. Quick action limits potential damage.',
+            'q10': 'Public WiFi networks are often unencrypted, allowing attackers to intercept data transmitted between your device and the router (man-in-the-middle attacks).'
+        };
         
-        async function selectAnswer(questionId, answer, buttonElement) {
-            // Prevent multiple selections
-            if (selectedQuestions[questionId]) {
-                return;
-            }
+        function selectAnswer(questionId, answer, buttonElement) {
+            if (selectedQuestions[questionId]) return;
             
             selectedQuestions[questionId] = answer;
             
-            // Disable all buttons for this question
             const questionCard = buttonElement.closest('.question-card');
             const allButtons = questionCard.querySelectorAll('.option-btn');
             allButtons.forEach(btn => btn.disabled = true);
             
-            try {
-                const response = await fetch('/api/check-answer', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        question_id: questionId,
-                        answer: answer
-                    })
-                });
-                
-                const result = await response.json();
-                
-                // Apply correct/incorrect styling
-                if (result.correct) {
-                    buttonElement.classList.add('correct');
-                    showResult(questionId, true, result.explanation);
-                } else {
-                    buttonElement.classList.add('incorrect');
-                    // Also highlight the correct answer
-                    highlightCorrectAnswer(questionId, allButtons);
-                    showResult(questionId, false, result.explanation);
-                }
-                
-            } catch (error) {
-                console.error('Error checking answer:', error);
-                showResult(questionId, false, 'Error checking answer');
+            const isCorrect = (answer === correctAnswers[questionId]);
+            
+            if (isCorrect) {
+                score++;
+                updateScore();
+                buttonElement.classList.add('correct');
+                showResult(questionId, true, explanations[questionId]);
+            } else {
+                buttonElement.classList.add('incorrect');
+                highlightCorrectAnswer(questionId, allButtons);
+                showResult(questionId, false, explanations[questionId]);
             }
         }
         
         function highlightCorrectAnswer(questionId, buttons) {
-            // For question 1, correct answer is B
-            if (questionId === 'q1') {
-                buttons.forEach(btn => {
-                    if (btn.textContent.includes('FIDO2 credential')) {
-                        btn.classList.add('correct');
-                    }
-                });
-            }
+            const correctAnswer = correctAnswers[questionId];
+            buttons.forEach(btn => {
+                if (btn.querySelector('.option-letter').textContent === correctAnswer) {
+                    btn.classList.add('correct');
+                }
+            });
         }
         
         function showResult(questionId, isCorrect, explanation) {
             const resultDiv = document.getElementById(`result-${questionId}`);
-            
-            if (isCorrect) {
-                resultDiv.innerHTML = `
-                    <div class="success-result">
-                        <strong>✅ Correct!</strong>
-                        <p>${explanation}</p>
-                    </div>
-                `;
-            } else {
-                resultDiv.innerHTML = `
-                    <div class="error-result">
-                        <strong>❌ Incorrect</strong>
-                        <p>${explanation}</p>
-                    </div>
-                `;
-            }
-            
+            resultDiv.innerHTML = `
+                <div class="${isCorrect ? 'success' : 'error'}-result">
+                    <strong>${isCorrect ? '✅ Correct!' : '❌ Incorrect'}</strong>
+                    <p>${explanation}</p>
+                </div>
+            `;
             resultDiv.style.display = 'block';
+        }
+
+        function updateScore() {
+            document.getElementById('score').textContent = score;
         }
     </script>
 </body>
